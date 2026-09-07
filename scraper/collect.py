@@ -1,4 +1,4 @@
-"""
+r"""
 Logs into Brightspace once, remembers the session, and pulls everything from
 this term's courses.
 
@@ -160,45 +160,84 @@ def current_courses(client, term_override=None):
 
 
 def walk_content(client, oid):
-    """Course content is a tree of modules; flatten it into a list."""
+    """Everything in a course's Content area, however deeply nested.
+
+    Prefers the table-of-contents endpoint, which returns the whole tree in
+    one request. Falls back to walking module by module if that is not
+    available -- the earlier version only ever saw the top layer, because a
+    module's Structure lists its children as stubs with no children of
+    their own.
+    """
     modules, topics = [], []
+    seen_modules, seen_topics = set(), set()
 
-    def visit(module, depth):
-        if depth > MAX_CONTENT_DEPTH:
+    def add_module(m):
+        mid = m.get("Id") or m.get("ModuleId")
+        if mid in seen_modules:
             return
+        seen_modules.add(mid)
         modules.append({
-            "id": module.get("Id"),
-            "title": module.get("Title"),
-            "due": module.get("ModuleDueDate"),
-            "start": module.get("ModuleStartDate"),
-            "end": module.get("ModuleEndDate"),
-            "description": (module.get("Description") or {}).get("Text", ""),
-            "modified": module.get("LastModifiedDate"),
+            "id": mid,
+            "title": m.get("Title"),
+            "due": m.get("ModuleDueDate") or m.get("DueDate"),
+            "start": m.get("ModuleStartDate") or m.get("StartDate"),
+            "end": m.get("ModuleEndDate") or m.get("EndDate"),
+            "description": (m.get("Description") or {}).get("Text", "") or "",
+            "modified": m.get("LastModifiedDate"),
         })
-        for child in module.get("Structure") or []:
-            if child.get("Type") == 0:               # nested module
-                sub = get(client, f"/d2l/api/le/{LE}/{oid}/content/modules/{child['Id']}/structure/")
-                if isinstance(sub, list):
-                    for entry in sub:
-                        if entry.get("Type") == 0:
-                            visit(entry, depth + 1)
-                        else:
-                            topics.append(as_topic(entry))
-                continue
-            topics.append(as_topic(child))
 
-    def as_topic(t):
-        return {
-            "id": t.get("Id"),
+    def add_topic(t):
+        tid = t.get("Id") or t.get("TopicId")
+        if tid in seen_topics:
+            return
+        seen_topics.add(tid)
+        topics.append({
+            "id": tid,
             "title": t.get("Title"),
             "url": t.get("Url"),
+            "type": t.get("TypeIdentifier"),
             "due": t.get("DueDate"),
+            "description": (t.get("Description") or {}).get("Text", "") or "",
             "modified": t.get("LastModifiedDate"),
-        }
+        })
+
+    # --- preferred: whole tree in one call ---------------------------
+    toc = get(client, f"/d2l/api/le/{LE}/{oid}/content/toc")
+    if isinstance(toc, dict) and toc.get("Modules") is not None:
+        def descend(module, depth):
+            if depth > MAX_CONTENT_DEPTH:
+                return
+            add_module(module)
+            for t in module.get("Topics") or []:
+                add_topic(t)
+            for sub in module.get("Modules") or []:
+                descend(sub, depth + 1)
+
+        for module in toc.get("Modules") or []:
+            descend(module, 0)
+        return modules, topics
+
+    # --- fallback: walk each module's structure endpoint --------------
+    def visit(mid, depth):
+        if depth > MAX_CONTENT_DEPTH or mid in seen_modules:
+            return
+        children = get(client, f"/d2l/api/le/{LE}/{oid}/content/modules/{mid}/structure/")
+        for child in children or []:
+            if child.get("Type") == 0:
+                add_module(child)
+                visit(child.get("Id"), depth + 1)
+            else:
+                add_topic(child)
 
     root = get(client, f"/d2l/api/le/{LE}/{oid}/content/root/")
     for module in root or []:
-        visit(module, 0)
+        add_module(module)
+        visit(module.get("Id"), 0)
+        for child in module.get("Structure") or []:
+            if child.get("Type") == 0:
+                visit(child.get("Id"), 1)
+            else:
+                add_topic(child)
     return modules, topics
 
 
@@ -277,8 +316,9 @@ def main():
         prose = len(c["announcements"]) + sum(1 for m in c["modules"] if m["description"])
         total_exact += len(exact)
         total_prose += prose
-        short = c["name"][:44]
-        print(f"{short:<46} {len(exact):>3} dates  {len(c['topics']):>4} files")
+        short = c["name"][:40]
+        print(f"{short:<42} {len(exact):>3} dates {len(c['modules']):>4} folders "
+              f"{len(c['topics']):>4} files")
     print("=" * 64)
     print(f"{total_exact} deadlines found as exact dates -- no AI needed for these.")
     print(f"{total_prose} announcements and descriptions to read for dates written in text.")
