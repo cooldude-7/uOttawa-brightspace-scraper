@@ -1,5 +1,7 @@
 phase0/phase0-report.md
 scraper/session.json
 scraper/collected.json
+scraper/_originals/
+scraper/extracted/
 __pycache__/
 .venv/
