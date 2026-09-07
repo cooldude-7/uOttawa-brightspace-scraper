@@ -77,6 +77,11 @@ CREATE TABLE IF NOT EXISTS runs (
     error       TEXT
 );
 
+"""
+
+# Separate from the tables above: an index naming a column that migration is
+# about to add cannot be created before migration has run.
+INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_dates_status ON dates(status, due_date);
 CREATE INDEX IF NOT EXISTS idx_dates_resolved ON dates(course_id, resolved_title);
 CREATE INDEX IF NOT EXISTS idx_docs_course ON documents(course_id);
@@ -96,6 +101,7 @@ def connect():
     db.execute("PRAGMA foreign_keys=ON")
     db.executescript(SCHEMA)
     migrate(db)
+    db.executescript(INDEXES)
     return db
 
 
