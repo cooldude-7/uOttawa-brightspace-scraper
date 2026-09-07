@@ -67,6 +67,7 @@ Course: {course}
 Document: {doc}
 Today is {today}. This is the Fall 2026 term at the University of Ottawa \
 (classes early September to early December, final exams mid-December).
+{term_note}
 
 Find EVERY deadline, exam, test, quiz, lab, assignment due date, presentation, \
 and milestone mentioned anywhere in the text below.
@@ -101,14 +102,40 @@ DATEISH = re.compile(
 )
 
 
+def term_window(term):
+    """Plausible date range for a uOttawa term code like 20269.
+
+    Last digit is the term: 1 winter, 5 summer, 9 fall. Content folders are
+    routinely reused between offerings, so a course page can still carry last
+    term's schedule -- dates outside this window are from a previous run of
+    the course, not this one.
+    """
+    if not term or len(term) != 5 or not term.isdigit():
+        return None, None
+    year, code = int(term[:4]), term[4]
+    if code == "1":
+        return f"{year}-01-01", f"{year}-05-15"
+    if code == "5":
+        return f"{year}-04-15", f"{year}-09-15"
+    if code == "9":
+        return f"{year}-08-15", f"{year + 1}-01-31"
+    return None, None
+
+
 def looks_dated(text):
     """Cheap filter -- skip documents with no date-like language at all."""
     return len(DATEISH.findall(text)) >= 2
 
 
-def ask(client, model, course, doc, text):
+def ask(client, model, course, doc, text, window=(None, None)):
     """One document, one model. Returns (dates, input_tokens, output_tokens)."""
     text = text[:150_000]
+    start, end = window
+    term_note = (
+        f"\nThis term runs from {start} to {end}. Course pages are often reused "
+        f"between terms, so any schedule outside that range belongs to a previous "
+        f"offering -- do not report those dates.\n" if start else ""
+    )
     try:
         r = client.messages.create(
             model=model,
@@ -117,7 +144,8 @@ def ask(client, model, course, doc, text):
                 "role": "user",
                 "content": PROMPT.format(
                     course=course, doc=doc,
-                    today=datetime.now().strftime("%Y-%m-%d"), text=text,
+                    today=datetime.now().strftime("%Y-%m-%d"),
+                    term_note=term_note, text=text,
                 ),
             }],
             output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
@@ -132,14 +160,32 @@ def ask(client, model, course, doc, text):
     except json.JSONDecodeError:
         dates = []
 
-    # A day or month of 00 cannot have been read from a document -- it is the
-    # shape a guessed date takes when only the month was known.
     kept = []
     for d in dates:
-        parts = (d.get("date") or "").split("-")
-        if len(parts) == 3 and "00" in parts[1:]:
-            print(f"    dropped invented date {d.get('date')} ({d.get('title','')[:40]})")
+        when = (d.get("date") or "").strip()
+
+        # No date at all is not a failure -- it is a deliverable that has been
+        # named but not yet scheduled. Those are worth tracking separately.
+        if not when:
+            d["pending"] = True
+            kept.append(d)
             continue
+
+        # A day or month of 00 cannot have been read from a document -- it is
+        # the shape a guessed date takes when only the month was known.
+        parts = when.split("-")
+        if len(parts) == 3 and "00" in parts[1:]:
+            print(f"    dropped invented date {when} ({d.get('title','')[:40]})")
+            continue
+
+        # Content folders get reused between offerings, so a stale schedule
+        # from a previous term is a real and dangerous failure mode.
+        if start and not (start <= when <= end):
+            print(f"    dropped stale date {when} ({d.get('title','')[:40]}) "
+                  f"-- outside {start}..{end}")
+            continue
+
+        d["pending"] = False
         kept.append(d)
     return kept, r.usage.input_tokens, r.usage.output_tokens
 
@@ -148,6 +194,15 @@ def cost(model_key, tin, tout):
     rates = {"haiku": (1.0, 5.0), "sonnet": (2.0, 10.0), "opus": (5.0, 25.0)}
     cin, cout = rates[model_key]
     return (tin / 1_000_000) * cin + (tout / 1_000_000) * cout
+
+
+def current_term():
+    """Newest term stamp across the collected courses."""
+    if not COLLECTED.exists():
+        return None
+    terms = [c.get("term") for c in json.loads(COLLECTED.read_text(encoding="utf-8"))
+             if c.get("term")]
+    return max(terms) if terms else None
 
 
 def load_documents(all_docs):
@@ -276,6 +331,10 @@ def with_known(title, due, body):
 def show(dates, indent="    "):
     for d in sorted(dates, key=lambda x: x.get("date") or "9999"):
         flag = {"high": " ", "medium": "?", "low": "??"}.get(d.get("confidence"), " ")
+        if d.get("pending"):
+            print(f"{indent}{'--':<3}{'no date yet':<17}"
+                  f"{d.get('kind',''):<13}{d.get('title','')[:44]}")
+            continue
         when = d.get("date", "?")
         if d.get("time"):
             when += " " + d["time"]
@@ -332,6 +391,10 @@ def main():
     else:
         print()
 
+    window = term_window(current_term())
+    if window[0]:
+        print(f"Only accepting dates between {window[0]} and {window[1]}\n")
+
     client = anthropic.Anthropic(api_key=key)
     totals = {k: [0, 0, 0] for k in keys}      # dates, input tokens, output tokens
     results = []
@@ -339,7 +402,7 @@ def main():
     for course, doc, text in docs:
         print(f"{course}\n  {doc}")
         for key in keys:
-            dates, tin, tout = ask(client, MODELS[key], course, doc, text)
+            dates, tin, tout = ask(client, MODELS[key], course, doc, text, window)
             totals[key][0] += len(dates)
             totals[key][1] += tin
             totals[key][2] += tout
@@ -352,9 +415,11 @@ def main():
     OUT.write_text(json.dumps(results, indent=2), encoding="utf-8")
 
     print("=" * 66)
+    pending = sum(1 for b in results for d in b["dates"] if d.get("pending"))
     for key in keys:
         found, tin, tout = totals[key]
-        print(f"{key:<8} {found:>3} dates   ${cost(key, tin, tout):.4f} for this run")
+        print(f"{key:<8} {found - pending:>3} dated   {pending:>3} awaiting a date"
+              f"   ${cost(key, tin, tout):.4f} for this run")
     if compare:
         print("\nIf both found the same dates, use haiku -- it is a fifth of the price.")
         print("If sonnet found real ones haiku missed, the extra cost is worth it.")
