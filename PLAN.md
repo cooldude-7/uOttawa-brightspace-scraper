@@ -206,19 +206,20 @@ modules. Worth building in Phase 5 while the card UI is already open.
 
 ## 7. Date extraction
 
-**Most due dates never reach a model at all.** Phase 0 found that assignments, quizzes, and
-content modules carry real date fields in the API. Those are exact, free, and cannot be
-misread — they go straight to cards with full confidence. The model is only needed for dates
-written in prose: announcements, course outlines, and the text of PDFs.
+**Reading documents is the product, not a fallback.** Brightspace's structured date fields
+and its calendar are badly incomplete in practice — professors do not fill them in
+consistently. Real deadlines live scattered through course outlines, lecture slides,
+announcement text, and assorted PDFs. That gap is the entire reason this app exists, and the
+design must treat prose as the primary source rather than the leftovers.
 
-That splits the work in three:
+**Source 1 — structured fields.** `DueDate` on assignments and quizzes, `ModuleDueDate` on
+modules, plus calendar events. Free, exact, no API cost — take them, but expect them to cover
+only a fraction of the real deadlines. A floor, not a ceiling.
 
-**Source 1 — structured fields (no model).** `DueDate` on assignments and quizzes,
-`ModuleDueDate` on content modules, plus calendar events. Exact dates, marked high-confidence,
-no API cost.
-
-**Source 2 — prose.** Everything else, and only this reaches a model. Two stages, because
-sending every document is wasteful:
+**Source 2 — every document, read.** Course outlines, slide decks, handouts, announcements,
+module descriptions. This is the main path and it has to be thorough: a missed deadline here
+is the failure the whole project is meant to prevent. Two stages, because sending unfiltered
+text is wasteful:
 
 **Stage 1 — cheap filter.** Regex + `dateutil` scan for date-shaped strings. Documents with no
 date-like text at all are dropped before any API call. Syllabi and assignment descriptions
@@ -234,8 +235,8 @@ check or an X.
 
 ### Which model, and what it costs
 
-Rough sizing for a 5-course term, now that structured dates are excluded: fewer documents
-survive the filter than originally estimated, so treat the figures below as a ceiling.
+Rough sizing for a 5-course term reading every document: ~750 items averaging ~5K tokens
+after extraction ≈ 3.75M input tokens, ~225K output.
 
 | Model | In / Out per MTok | Initial scrape | Ongoing |
 |---|---|---|---|
@@ -243,10 +244,18 @@ survive the filter than originally estimated, so treat the figures below as a ce
 | Sonnet 5 | $2 / $10 | ~$10 | ~$0.20/day |
 | Opus 5 | $5 / $25 | ~$24 | ~$0.50/day |
 
-**Recommendation: Haiku 4.5** (`claude-haiku-4-5`). "Find the dates in this text, return JSON"
-is squarely within it, and the human-in-the-loop card design means a rare miss costs you one
-glance, not a missed midterm. Note that even Opus 5 is a ~$24 one-time bill, so if extraction
-accuracy disappoints in testing, escalating is cheap — that call is yours.
+**Recommendation: measure before committing.** Pulling a deadline out of a clean announcement
+is easy; finding one buried on slide 34 of a course outline, or phrased as "the report is due
+the Friday after reading week," is not. Since reading documents *is* the product, accuracy
+matters more than the token bill here.
+
+Plan: build a small test set from real course outlines with the deadlines hand-labelled, then
+run Haiku 4.5 and Sonnet 5 against it and compare. A missed midterm costs far more than the
+~$5 difference. Provisional split if the results are close — Haiku 4.5 for short announcements,
+Sonnet 5 for long documents like outlines and decks, where the reasoning is harder.
+
+Recall bias is deliberate: it is better to surface a date that turns out to be nothing (one
+click to dismiss) than to miss a real one. Tune the prompt to over-report.
 
 Prompt caching is a minor lever here: the extraction system prompt is short relative to each
 document, and Haiku's minimum cacheable prefix may not even be met. The real savings are in
