@@ -244,7 +244,22 @@ Stage 1 and in `content_hash` skipping unchanged items.
 
 ## 8. Build phases
 
-**Phase 0 — Recon spike. This is a gate, not a formality.**
+**Phase 0 — Recon spike. PASSED (2026-09-07).**
+
+The student role reads the REST API cleanly: 19 endpoints OK, 0 denied, 0 missing, 0 non-JSON,
+across content, announcements, assignments, quizzes, grades, and calendar events on three
+sample courses. **Pin `lp=1.63`, `le=1.97`** — the versions this instance serves. The
+HTML-parsing fallback is off the table; build the JSON design as written.
+
+Session cookies needed, and no others: `d2lSessionVal`, `d2lSecureSessionVal`,
+`d2lSameSiteCanaryA`, `d2lSameSiteCanaryB`. The Brightspace-only scope in §2 is confirmed
+sufficient.
+
+`myenrollments` returns **22 org units**, including non-academic ones (residence modules,
+orientation) and courses from prior terms. Phase 2 needs to filter to current-term course
+offerings rather than trusting the raw list.
+
+<details><summary>Original gate criteria</summary>
 Verify with your real cookies: does `/d2l/api/` answer a student session? Which of
 `/le/*/content`, `/le/*/dropbox`, `/le/*/news`, `/le/*/quizzes`, `/lp/*/enrollments` are
 readable at student permission level? Is an `X-Csrf-Token` header required (D2L serves one at
@@ -252,6 +267,8 @@ readable at student permission level? Is an `X-Csrf-Token` header required (D2L 
 API versions. **If the API turns out to be closed to student roles, we fall back to
 authenticated HTML fetch + `selectolax` parsing — still no browser, but more brittle.**
 Decide this before writing anything else.
+
+</details>
 
 **Phase 1 — Auth pipeline.** `login_helper.py`, encrypted cookie storage, `/api/session`
 intake, session-validity probe. Deliverable: the Pi can authenticate unattended, and we have a
@@ -283,7 +300,7 @@ you a notification if a scrape has not succeeded in 3 hours.
 
 | Risk | Mitigation |
 |---|---|
-| **D2L API closed to student role** — the biggest unknown; would force HTML parsing | Phase 0 gate settles it before any real code is written. The 3B+'s 1 GB also makes a headless-browser fallback merely unpleasant rather than impossible, so this stops being existential |
+| ~~**D2L API closed to student role**~~ — **retired 2026-09-07.** Phase 0 confirmed full read access at student role | — |
 | Session expires faster than hoped → reconnect fatigue | Measured in Phase 1. Fallback: widen cookie scope, or a one-click browser extension instead of the script |
 | Pi runs out of RAM | Much less pressing on 1 GB. Still: SQLite not Postgres, no browser, no Node, prebuilt frontend, zram. Heavy work stays on the laptop |
 | microSD wear from constant writes | DB and vault live on a USB stick; the SD card holds the OS only |
