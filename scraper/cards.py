@@ -8,6 +8,7 @@ Your deadlines, and the check / X decision on each one.
     python cards.py --review        go through them one at a time
     python cards.py --no-sessions   hide scheduled labs and tutorials
     python cards.py --sessions      show only those
+    python cards.py --all-sections  include other lab sections too
 
 Deciding here writes to the database. Later the same decisions come from
 tapping a card on your phone; this is the same thing without the web page.
@@ -79,7 +80,7 @@ def show(rows, course_filter=None, sessions="all"):
 
 def review(db):
     """One at a time: read the evidence, then decide."""
-    rows = store.cards(db, "new")
+    rows = store.cards(db, "new", "--all-sections" not in sys.argv)
     if not rows:
         print("Nothing waiting.")
         return
@@ -124,7 +125,8 @@ def main():
     sessions = "hide" if "--no-sessions" in args else (
         "only" if "--sessions" in args else "all")
 
-    rows = store.cards(db, status)
+    mine_only = "--all-sections" not in args
+    rows = store.cards(db, status, mine_only)
     count = show(rows, course, sessions)
 
     s = store.summary(db)

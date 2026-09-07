@@ -15,12 +15,28 @@ Two things earn their keep here:
 """
 
 import hashlib
+import json
 import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "brightspace.db"
+PREFS_PATH = Path(__file__).parent / "me.json"
+
+
+def load_prefs():
+    """Your lab section and group, so other people's deadlines stay hidden."""
+    if PREFS_PATH.exists():
+        try:
+            return json.loads(PREFS_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def save_prefs(prefs):
+    PREFS_PATH.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS courses (
@@ -410,15 +426,43 @@ def finish_run(db, run_id, seen, read, found, cost, error=None):
 
 # ------------------------------------------------------------------ reads
 
-def cards(db, status="new"):
-    """Deadlines awaiting a decision, soonest first, undated ones last."""
-    return db.execute(
-        """SELECT d.*, c.name AS course_name, c.code AS course_code
+def cards(db, status="new", mine_only=True):
+    """Deadlines awaiting a decision, soonest first, undated ones last.
+
+    Where your section is known, other sections' deadlines are dropped: a
+    course listing five lab groups produces five times the cards, and four
+    of them were never yours to act on.
+    """
+    rows = db.execute(
+        """SELECT d.*, c.d2l_id AS course_d2l_id, c.name AS course_name,
+                  c.code AS course_code
            FROM dates d JOIN courses c ON c.id = d.course_id
            WHERE d.status = ?
            ORDER BY d.pending ASC, d.due_date ASC, d.due_time ASC""",
         (status,),
     ).fetchall()
+
+    if not mine_only:
+        return rows
+
+    prefs = load_prefs()
+    sections = prefs.get("sections", {})
+    groups = prefs.get("groups", {})
+    if not sections and not groups:
+        return rows
+
+    kept = []
+    for row in rows:
+        course = str(row["course_d2l_id"])
+        section, group = audience(row["title"])
+        # A card naming no section belongs to everyone; only a card naming
+        # someone else's is dropped.
+        if section and course in sections and section != sections[course]:
+            continue
+        if group and course in groups and group != groups[course]:
+            continue
+        kept.append(row)
+    return kept
 
 
 def summary(db):

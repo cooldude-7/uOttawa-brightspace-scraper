@@ -10,6 +10,7 @@ assignment, is your section -- which is evidence rather than a guess.
 """
 
 import json
+import sys
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -87,7 +88,14 @@ def main():
             match = [s for s, (dd, tt) in sections.items()
                      if dd == want_date and (not tt or tt == want_time)]
 
-            rows.append((name, f"{want_date} {want_time}", sections, match))
+            # A due date nowhere near any listed date is a stale field left
+            # from a previous offering, not a failed match. It should not
+            # count against the section it cannot possibly confirm.
+            listed = {dd for dd, _ in sections.values()}
+            stale = not match and want_date < min(listed)
+
+            rows.append((name, f"{want_date} {want_time}", sections, match, stale,
+                         course["id"]))
             for s in match:
                 votes[s] += 1
 
@@ -97,9 +105,10 @@ def main():
             "date. Nothing to match against -- run find_dates.py --all first."
         )
 
-    for name, mine, sections, match in rows:
+    for name, mine, sections, match, stale, _oid in rows:
         print(f"\n{name[:56]}")
-        print(f"  Brightspace shows you: {mine}")
+        flag = "   <-- STALE, before every listed date" if stale else ""
+        print(f"  Brightspace shows you: {mine}{flag}")
         for s in sorted(sections):
             dd, tt = sections[s]
             mark = "  <-- matches you" if s in match else ""
@@ -114,17 +123,33 @@ def main():
 
     ranked = votes.most_common()
     best, count = ranked[0]
-    print(f"Matched {best.upper()} on {count} of {len(rows)} assignments.")
+    usable = [r for r in rows if not r[4]]
+    stale_count = len(rows) - len(usable)
+
+    print(f"Matched {best.upper()} on {count} of {len(usable)} usable assignments.")
+    if stale_count:
+        print(f"({stale_count} ignored -- Brightspace's due date there is stale.)")
+
+    rivals = [s.upper() for s, c in ranked[1:]]
     if len(ranked) > 1 and ranked[1][1] == count:
-        tied = ", ".join(s.upper() for s, c in ranked if c == count)
-        print(f"TIED with {tied} -- those sections share a slot, so this")
-        print("cannot tell them apart. Ask at your lab.")
-    elif count == len(rows):
-        print(f"Every assignment agrees. You are {best.upper()}.")
-    else:
-        print(f"Other sections also matched somewhere: "
-              f"{', '.join(s.upper() for s, _ in ranked[1:])}")
+        print(f"TIED with {', '.join(s.upper() for s, c in ranked if c == count)}"
+              " -- those sections share a slot, so this cannot tell them apart.")
+        return
+    if count < len(usable):
+        print(f"Some did not match{' (also seen: ' + ', '.join(rivals) + ')' if rivals else ''}.")
         print("Treat this as likely rather than certain.")
+        return
+
+    print(f"Every usable assignment agrees. You are {best.upper()}.")
+    course_id = usable[0][5]
+    if "--save" in sys.argv:
+        prefs = store.load_prefs()
+        prefs.setdefault("sections", {})[str(course_id)] = best
+        store.save_prefs(prefs)
+        print(f"\nSaved. Other sections will be hidden from your cards.")
+        print("Undo with:  python cards.py --all-sections")
+    else:
+        print(f"\nTo hide the other sections:  python mysection.py --save")
 
 
 if __name__ == "__main__":
