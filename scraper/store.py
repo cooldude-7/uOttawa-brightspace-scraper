@@ -105,6 +105,24 @@ def connect():
     return db
 
 
+def restore(db):
+    """Undo automatic merges, so a corrected tidy can redo them properly.
+
+    Only rows retired by tidy come back; anything you decided yourself is
+    left alone. Merged rows are marked, never deleted, precisely so a bad
+    merge rule stays recoverable.
+    """
+    changed = db.execute(
+        "UPDATE dates SET status = 'new', decided_at = NULL WHERE status = 'resolved'"
+    ).rowcount
+    # Comparison keys were computed by the old rule and are now wrong.
+    for row in db.execute("SELECT id, title FROM dates").fetchall():
+        db.execute("UPDATE dates SET resolved_title = ? WHERE id = ?",
+                   (normalize(row["title"]), row["id"]))
+    db.commit()
+    return changed
+
+
 def migrate(db):
     """Add columns a previous version's database will not have."""
     columns = {row[1] for row in db.execute("PRAGMA table_info(dates)")}
@@ -189,26 +207,6 @@ def fingerprint(text):
     return hashlib.sha256(" ".join((text or "").split()).encode()).hexdigest()
 
 
-def normalize(title):
-    """Reduce a title to the event it names.
-
-    The same exam turns up in six documents worded six ways -- "Lab exam",
-    "Lab exam (content covered may be tested)", "Lab exam (hands-on practical
-    skills)". The parenthetical is the document talking about the event, not
-    part of its identity, so it is dropped before comparing.
-    """
-    text = (title or "").lower()
-    text = re.sub(r"\([^)]*\)", " ", text)          # drop parentheticals
-    text = re.sub(r"[^a-z0-9]+", " ", text)
-    return text.strip()
-
-
-def dedup_key(course_id, title, due_date):
-    """Same deadline, same key -- however many times it is rediscovered."""
-    raw = f"{course_id}|{normalize(title)}|{due_date or 'pending'}"
-    return hashlib.sha256(raw.encode()).hexdigest()
-
-
 SECTION_RE = re.compile(r"\b([a-e])\s*(\d)\b")
 GROUP_RE = re.compile(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b")
 
@@ -225,6 +223,31 @@ def audience(title):
     group = GROUP_RE.search(text)
     return (f"{section.group(1)}{section.group(2)}" if section else "",
             group.group(1) if group else "")
+
+
+def normalize(title):
+    """Reduce a title to the event it names, keeping who it is for.
+
+    The same exam turns up in six documents worded six ways -- "Lab exam",
+    "Lab exam (content covered may be tested)", "Lab exam (hands-on practical
+    skills)". Those parentheticals are the document describing the event, not
+    part of its identity, so they are dropped.
+
+    But the section frequently lives inside the parentheses too -- "Soldering
+    lab submission (Group A4)" -- and stripping it made five separate section
+    deadlines look like one. The audience is therefore pulled out first and
+    put back afterwards.
+    """
+    section, group = audience(title)
+    text = re.sub(r"\([^)]*\)", " ", (title or "").lower())
+    text = re.sub(r"[^a-z0-9]+", " ", text).strip()
+    return " ".join(filter(None, [text, section, group]))
+
+
+def dedup_key(course_id, title, due_date):
+    """Same deadline, same key -- however many times it is rediscovered."""
+    raw = f"{course_id}|{normalize(title)}|{due_date or 'pending'}"
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def event_key(course_id, due_date, due_time, title):
@@ -420,6 +443,8 @@ if __name__ == "__main__":
     import sys
 
     db = connect()
+    if "--restore" in sys.argv:
+        print(f"Restored {restore(db)} rows merged by an earlier rule.")
     if "--tidy" in sys.argv:
         print(f"Collapsed {tidy(db)} duplicate entries.\n")
     print(f"Database ready at {DB_PATH}")
