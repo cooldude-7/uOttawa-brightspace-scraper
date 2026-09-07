@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS dates (
     source_excerpt TEXT,
     pending        INTEGER NOT NULL DEFAULT 0,
     dedup_key      TEXT UNIQUE NOT NULL,
+    resolved_title TEXT,
     status         TEXT NOT NULL DEFAULT 'new',
     gcal_event_id  TEXT,
     first_seen     TEXT NOT NULL,
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dates_status ON dates(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_dates_resolved ON dates(course_id, resolved_title);
 CREATE INDEX IF NOT EXISTS idx_docs_course ON documents(course_id);
 """
 
@@ -93,7 +95,73 @@ def connect():
     db.execute("PRAGMA synchronous=NORMAL")
     db.execute("PRAGMA foreign_keys=ON")
     db.executescript(SCHEMA)
+    migrate(db)
     return db
+
+
+def migrate(db):
+    """Add columns a previous version's database will not have."""
+    columns = {row[1] for row in db.execute("PRAGMA table_info(dates)")}
+    if "resolved_title" not in columns:
+        db.execute("ALTER TABLE dates ADD COLUMN resolved_title TEXT")
+    missing = db.execute(
+        "SELECT id, title FROM dates WHERE resolved_title IS NULL").fetchall()
+    for row in missing:
+        db.execute("UPDATE dates SET resolved_title = ? WHERE id = ?",
+                   (normalize(row["title"]), row["id"]))
+    if missing:
+        db.commit()
+
+
+def tidy(db):
+    """Collapse events already stored more than once.
+
+    The same exam mentioned in six documents arrived as six rows before
+    titles were compared loosely. Within a course, rows naming the same
+    event keep the most informative one -- a real date beats no date, and
+    higher confidence beats lower -- and the rest are marked resolved so
+    they leave the list without being treated as dismissed.
+    """
+    rank = {"high": 0, "medium": 1, "low": 2}
+    groups = {}
+    for row in db.execute(
+            "SELECT * FROM dates WHERE status = 'new' ORDER BY id").fetchall():
+        # Rows with a real date stay distinct per date: two lab reports due on
+        # different days are two deadlines, not one duplicated.
+        key = (row["course_id"], row["resolved_title"], row["due_date"] or "")
+        groups.setdefault((row["course_id"], row["resolved_title"]), []).append((key, row))
+
+    merged = 0
+    for (_course, _title), entries in groups.items():
+        dated = [r for _, r in entries if r["due_date"]]
+        undated = [r for _, r in entries if not r["due_date"]]
+
+        # An expectation whose date is now known is fulfilled, not pending.
+        if dated and undated:
+            for row in undated:
+                db.execute("UPDATE dates SET status = 'resolved', decided_at = ? "
+                           "WHERE id = ?", (now(), row["id"]))
+                merged += 1
+            undated = []
+
+        # Among rows saying the same thing on the same date, keep the best.
+        for bucket in (dated, undated):
+            seen = {}
+            for row in bucket:
+                slot = row["due_date"] or ""
+                best = seen.get(slot)
+                if best is None:
+                    seen[slot] = row
+                    continue
+                better = rank.get(row["confidence"], 3) < rank.get(best["confidence"], 3)
+                loser, keeper = (best, row) if better else (row, best)
+                seen[slot] = keeper
+                db.execute("UPDATE dates SET status = 'resolved', decided_at = ? "
+                           "WHERE id = ?", (now(), loser["id"]))
+                merged += 1
+
+    db.commit()
+    return merged
 
 
 def fingerprint(text):
@@ -102,13 +170,28 @@ def fingerprint(text):
 
 
 def normalize(title):
-    return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
+    """Reduce a title to the event it names.
+
+    The same exam turns up in six documents worded six ways -- "Lab exam",
+    "Lab exam (content covered may be tested)", "Lab exam (hands-on practical
+    skills)". The parenthetical is the document talking about the event, not
+    part of its identity, so it is dropped before comparing.
+    """
+    text = (title or "").lower()
+    text = re.sub(r"\([^)]*\)", " ", text)          # drop parentheticals
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return text.strip()
 
 
 def dedup_key(course_id, title, due_date):
     """Same deadline, same key -- however many times it is rediscovered."""
     raw = f"{course_id}|{normalize(title)}|{due_date or 'pending'}"
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def pending_key(course_id, title):
+    """Identity of an event regardless of whether its date is known yet."""
+    return hashlib.sha256(f"{course_id}|{normalize(title)}".encode()).hexdigest()
 
 
 # ------------------------------------------------------------------ writes
@@ -176,14 +259,39 @@ def save_dates(db, course_id, document_id, dates):
         existing = db.execute("SELECT id FROM dates WHERE dedup_key = ?", (key,)).fetchone()
         if existing:
             continue
+
+        core = normalize(d.get("title"))
+
+        if due:
+            # A real date for something we were only waiting on: this is the
+            # expectation being fulfilled, so retire the placeholder rather
+            # than leaving both on the list.
+            # Keyed on the absence of a date, not on the extractor's pending
+            # flag -- the flag is advisory, the missing date is the fact.
+            db.execute(
+                """UPDATE dates SET status = 'resolved', decided_at = ?
+                   WHERE course_id = ? AND due_date IS NULL AND status = 'new'
+                     AND resolved_title = ?""",
+                (now(), course_id, core),
+            )
+        else:
+            # Do not raise a placeholder for something already dated, or for
+            # an expectation already on the list under different wording.
+            clash = db.execute(
+                """SELECT id FROM dates
+                   WHERE course_id = ? AND resolved_title = ? AND status != 'dismissed'""",
+                (course_id, core),
+            ).fetchone()
+            if clash:
+                continue
         db.execute(
             """INSERT INTO dates
                (course_id, document_id, title, due_date, due_time, kind, confidence,
-                source_excerpt, pending, dedup_key, status, first_seen)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)""",
+                source_excerpt, pending, dedup_key, resolved_title, status, first_seen)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)""",
             (course_id, document_id, d.get("title"), due, d.get("time") or None,
              d.get("kind"), d.get("confidence"), d.get("source_excerpt"),
-             1 if d.get("pending") else 0, key, now()),
+             1 if d.get("pending") else 0, key, core, now()),
         )
         added += 1
     return added
@@ -191,7 +299,7 @@ def save_dates(db, course_id, document_id, dates):
 
 def decide(db, date_id, status):
     """Accept or dismiss one card. Dismissed is permanent."""
-    if status not in ("accepted", "dismissed", "new"):
+    if status not in ("accepted", "dismissed", "new", "resolved"):
         raise ValueError(f"unknown status: {status}")
     db.execute("UPDATE dates SET status = ?, decided_at = ? WHERE id = ?",
                (status, now(), date_id))
@@ -236,12 +344,17 @@ def summary(db):
         "pending": count("SELECT COUNT(*) FROM dates WHERE status='new' AND pending=1"),
         "accepted": count("SELECT COUNT(*) FROM dates WHERE status='accepted'"),
         "dismissed": count("SELECT COUNT(*) FROM dates WHERE status='dismissed'"),
+        "resolved": count("SELECT COUNT(*) FROM dates WHERE status='resolved'"),
         "spent": count("SELECT COALESCE(SUM(cost_usd), 0) FROM runs"),
     }
 
 
 if __name__ == "__main__":
+    import sys
+
     db = connect()
+    if "--tidy" in sys.argv:
+        print(f"Collapsed {tidy(db)} duplicate entries.\n")
     print(f"Database ready at {DB_PATH}")
     for key, value in summary(db).items():
         print(f"  {key:<12} {value}")
