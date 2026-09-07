@@ -1,5 +1,5 @@
 phase0/phase0-report.md
-*.json
-cookies*
+scraper/session.json
+scraper/collected.json
 __pycache__/
 .venv/

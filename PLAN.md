@@ -206,7 +206,19 @@ modules. Worth building in Phase 5 while the card UI is already open.
 
 ## 7. Date extraction
 
-Two stages, because sending every document to a model is wasteful:
+**Most due dates never reach a model at all.** Phase 0 found that assignments, quizzes, and
+content modules carry real date fields in the API. Those are exact, free, and cannot be
+misread — they go straight to cards with full confidence. The model is only needed for dates
+written in prose: announcements, course outlines, and the text of PDFs.
+
+That splits the work in three:
+
+**Source 1 — structured fields (no model).** `DueDate` on assignments and quizzes,
+`ModuleDueDate` on content modules, plus calendar events. Exact dates, marked high-confidence,
+no API cost.
+
+**Source 2 — prose.** Everything else, and only this reaches a model. Two stages, because
+sending every document is wasteful:
 
 **Stage 1 — cheap filter.** Regex + `dateutil` scan for date-shaped strings. Documents with no
 date-like text at all are dropped before any API call. Syllabi and assignment descriptions
@@ -222,8 +234,8 @@ check or an X.
 
 ### Which model, and what it costs
 
-Rough sizing for a 5-course term: ~750 documents surviving the filter, averaging ~5K tokens
-each after extraction ≈ 3.75M input tokens, ~225K output.
+Rough sizing for a 5-course term, now that structured dates are excluded: fewer documents
+survive the filter than originally estimated, so treat the figures below as a ceiling.
 
 | Model | In / Out per MTok | Initial scrape | Ongoing |
 |---|---|---|---|
@@ -256,8 +268,16 @@ Session cookies needed, and no others: `d2lSessionVal`, `d2lSecureSessionVal`,
 sufficient.
 
 `myenrollments` returns **22 org units**, including non-academic ones (residence modules,
-orientation) and courses from prior terms. Phase 2 needs to filter to current-term course
-offerings rather than trusting the raw list.
+orientation) and courses from prior terms. Every course name carries a term stamp — `20259`
+= Fall 2025, `20261` = Winter 2026, `20265` = Summer 2026, `20269` = Fall 2026 (year + 1/5/9
+for winter/summer/fall). Filtering to the highest term code present yields exactly the five
+current courses, with no hand-configuration.
+
+The calendar endpoint returned 400 on all three courses — it requires a date range, which the
+probe did not send. Not a permissions problem; fixed in the collector.
+
+**Assignments and quizzes carry their due dates as structured fields** (`DueDate`, `StartDate`,
+`EndDate`), and content modules carry `ModuleDueDate`. This is a material finding — see §7.
 
 <details><summary>Original gate criteria</summary>
 Verify with your real cookies: does `/d2l/api/` answer a student session? Which of
