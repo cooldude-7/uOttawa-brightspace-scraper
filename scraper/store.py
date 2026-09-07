@@ -119,6 +119,14 @@ def migrate(db):
         db.commit()
 
 
+def informative(row):
+    """Rank rows so the survivor of a merge is the most useful one."""
+    confidence = {"high": 0, "medium": 1, "low": 2}.get(row["confidence"], 3)
+    vague = 1 if row["kind"] in (None, "other") else 0
+    # A longer title usually carries the section or group; prefer it on ties.
+    return (confidence, vague, -len(row["title"] or ""))
+
+
 def tidy(db):
     """Collapse events already stored more than once.
 
@@ -128,43 +136,49 @@ def tidy(db):
     higher confidence beats lower -- and the rest are marked resolved so
     they leave the list without being treated as dismissed.
     """
-    rank = {"high": 0, "medium": 1, "low": 2}
-    groups = {}
-    for row in db.execute(
-            "SELECT * FROM dates WHERE status = 'new' ORDER BY id").fetchall():
-        # Rows with a real date stay distinct per date: two lab reports due on
-        # different days are two deadlines, not one duplicated.
-        key = (row["course_id"], row["resolved_title"], row["due_date"] or "")
-        groups.setdefault((row["course_id"], row["resolved_title"]), []).append((key, row))
-
+    rows = db.execute("SELECT * FROM dates WHERE status = 'new' ORDER BY id").fetchall()
     merged = 0
-    for (_course, _title), entries in groups.items():
-        dated = [r for _, r in entries if r["due_date"]]
-        undated = [r for _, r in entries if not r["due_date"]]
 
-        # An expectation whose date is now known is fulfilled, not pending.
-        if dated and undated:
-            for row in undated:
-                db.execute("UPDATE dates SET status = 'resolved', decided_at = ? "
-                           "WHERE id = ?", (now(), row["id"]))
-                merged += 1
-            undated = []
+    # Pass 1: dated rows describing one event at one time for one audience.
+    slots = {}
+    for row in rows:
+        if not row["due_date"]:
+            continue
+        slots.setdefault(
+            event_key(row["course_id"], row["due_date"], row["due_time"], row["title"]),
+            []).append(row)
 
-        # Among rows saying the same thing on the same date, keep the best.
-        for bucket in (dated, undated):
-            seen = {}
-            for row in bucket:
-                slot = row["due_date"] or ""
-                best = seen.get(slot)
-                if best is None:
-                    seen[slot] = row
-                    continue
-                better = rank.get(row["confidence"], 3) < rank.get(best["confidence"], 3)
-                loser, keeper = (best, row) if better else (row, best)
-                seen[slot] = keeper
-                db.execute("UPDATE dates SET status = 'resolved', decided_at = ? "
-                           "WHERE id = ?", (now(), loser["id"]))
-                merged += 1
+    survivors = {}
+    for key, bucket in slots.items():
+        bucket.sort(key=informative)
+        survivors[key] = bucket[0]
+        for loser in bucket[1:]:
+            db.execute("UPDATE dates SET status = 'resolved', decided_at = ? WHERE id = ?",
+                       (now(), loser["id"]))
+            merged += 1
+
+    # Pass 2: undated rows, which have no date to key on, fall back to the
+    # loosened title -- and any whose date has since been learned is retired.
+    by_title = {}
+    dated_titles = {(r["course_id"], r["resolved_title"])
+                    for r in survivors.values() if r["due_date"]}
+    for row in rows:
+        if row["due_date"]:
+            continue
+        ident = (row["course_id"], row["resolved_title"])
+        if ident in dated_titles:
+            db.execute("UPDATE dates SET status = 'resolved', decided_at = ? WHERE id = ?",
+                       (now(), row["id"]))
+            merged += 1
+            continue
+        by_title.setdefault(ident, []).append(row)
+
+    for bucket in by_title.values():
+        bucket.sort(key=informative)
+        for loser in bucket[1:]:
+            db.execute("UPDATE dates SET status = 'resolved', decided_at = ? WHERE id = ?",
+                       (now(), loser["id"]))
+            merged += 1
 
     db.commit()
     return merged
@@ -192,6 +206,38 @@ def normalize(title):
 def dedup_key(course_id, title, due_date):
     """Same deadline, same key -- however many times it is rediscovered."""
     raw = f"{course_id}|{normalize(title)}|{due_date or 'pending'}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+SECTION_RE = re.compile(r"\b([a-e])\s*(\d)\b")
+GROUP_RE = re.compile(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b")
+
+
+def audience(title):
+    """Who a deadline is for: a lab section (A3) or a day group (Wednesday).
+
+    This is the part of a title that must NOT be collapsed. Section A2 and
+    section A5 hand the same thing in at the same hour on the same day, and
+    they are two deadlines, not one.
+    """
+    text = (title or "").lower()
+    section = SECTION_RE.search(text)
+    group = GROUP_RE.search(text)
+    return (f"{section.group(1)}{section.group(2)}" if section else "",
+            group.group(1) if group else "")
+
+
+def event_key(course_id, due_date, due_time, title):
+    """Identity of a real-world event, independent of how it was worded.
+
+    Two runs of the extractor describe the same submission as "Circuit manual
+    submission - A4 (Lab 2)" and "Circuit manual submission - Section A4", and
+    the same report as "Lab 1 Report Submission" and "Lab 1 Report Due". No
+    amount of title cleaning reconciles those, but a course, a date, a time
+    and an audience do.
+    """
+    section, group = audience(title)
+    raw = f"{course_id}|{due_date or ''}|{due_time or ''}|{section}|{group}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -269,6 +315,21 @@ def save_dates(db, course_id, document_id, dates):
         core = normalize(d.get("title"))
 
         if due:
+            # Already have this event, at this time, for this audience? Then
+            # this is the same deadline worded differently.
+            twin = db.execute(
+                """SELECT id FROM dates
+                   WHERE course_id = ? AND due_date = ? AND status != 'dismissed'""",
+                (course_id, due),
+            ).fetchall()
+            mine = event_key(course_id, due, d.get("time") or None, d.get("title"))
+            if any(event_key(course_id, due,
+                             db.execute("SELECT due_time FROM dates WHERE id = ?",
+                                        (t["id"],)).fetchone()[0],
+                             db.execute("SELECT title FROM dates WHERE id = ?",
+                                        (t["id"],)).fetchone()[0]) == mine for t in twin):
+                continue
+
             # A real date for something we were only waiting on: this is the
             # expectation being fulfilled, so retire the placeholder rather
             # than leaving both on the list.
