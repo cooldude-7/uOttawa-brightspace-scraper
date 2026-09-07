@@ -167,12 +167,59 @@ def load_documents(all_docs):
 
     if all_docs and COLLECTED.exists():
         for course in json.loads(COLLECTED.read_text(encoding="utf-8")):
+            name = course["name"][:40]
+
             for a in course.get("announcements", []):
                 body = (a.get("Body") or {}).get("Text", "") or ""
                 if body.strip():
-                    docs.append((course["name"][:40],
-                                 f"announcement: {a.get('Title','')}"[:60], body))
+                    docs.append((name, f"announcement: {a.get('Title','')}"[:60], body))
+
+            # Quizzes and assignments carry their own due dates as real fields,
+            # but the text inside them often mentions further dates -- late
+            # penalties, what a test covers, when solutions get posted.
+            for q in course.get("quizzes", []):
+                body = "\n".join(filter(None, [
+                    deep_text(q.get("Description")),
+                    deep_text(q.get("Instructions")),
+                ]))
+                if body.strip():
+                    docs.append((name, f"quiz: {q.get('Name','')}"[:60],
+                                 with_known(q.get("Name"), q.get("DueDate")
+                                            or q.get("EndDate"), body)))
+
+            for a in course.get("assignments", []):
+                body = deep_text(a.get("CustomInstructions"))
+                if body.strip():
+                    docs.append((name, f"assignment: {a.get('Name','')}"[:60],
+                                 with_known(a.get("Name"), a.get("DueDate"), body)))
+
+            for m in course.get("modules", []):
+                if (m.get("description") or "").strip():
+                    docs.append((name, f"folder: {m.get('title','')}"[:60],
+                                 m["description"]))
     return docs
+
+
+def deep_text(field):
+    """Brightspace nests description text inconsistently -- dig it out."""
+    if isinstance(field, str):
+        return field
+    if isinstance(field, dict):
+        inner = field.get("Text")
+        if isinstance(inner, str):
+            return inner
+        if isinstance(inner, dict):
+            return inner.get("Text", "") or ""
+    return ""
+
+
+def with_known(title, due, body):
+    """Tell the model the date Brightspace already knows, so it does not
+    re-report it as a discovery and can spot dates that differ from it."""
+    if not due:
+        return body
+    return (f"[Brightspace already lists '{title}' as due {due}. Do not report that "
+            f"date again -- report only ADDITIONAL dates mentioned below.]\n\n{body}")
 
 
 def show(dates, indent="    "):
