@@ -14,7 +14,7 @@ notifications on laptop and phone.
 | Login | Real browser on the laptop, human does MFA | MFA is a one-time step; there is no safe way to automate it |
 | Scraping | Authenticated JSON calls to `/d2l/api/...`, no headless browser | Runs in tens of MB on the Pi; survives D2L UI reskins |
 | Always-on host | **Raspberry Pi 3B+** (Zero 2 W as spare) | 1 GB RAM and wired Ethernet — double the headroom and a far more reliable link than the Zero's 2.4 GHz-only Wi-Fi |
-| Heavy lifting | Main computer (initial scrape + file extraction) | Storage and CPU live there |
+| Heavy lifting | Main computer (initial scrape + file extraction) | CPU. Storage is no longer the reason — 256 GB on the Pi holds the whole archive |
 | Vault sync | Private git repo, Obsidian Git on laptop only | Free, versioned, diffable. Phone gets the web app, not the vault |
 | Vault scope | Everything, files text-extracted to markdown | Full-text searchable brain |
 | Cards | Check → Google Calendar, X → dismissed permanently | Predictable; nothing hits the real calendar unreviewed |
@@ -112,9 +112,18 @@ Pi. FastAPI serves the `dist/` folder. Service worker + web app manifest for PWA
 - `cloudflared` (arm64) — free HTTPS + a stable hostname, no port forwarding, no dynamic DNS.
   Web push *requires* HTTPS, so this is load-bearing, not a nicety.
 - `systemd` units for the app and the tunnel; `zram` enabled for swap headroom.
-- **Put SQLite and the vault on a USB stick, not the microSD.** A database committing writes
-  every 30 minutes for a year is exactly the workload that kills SD cards. The 3B+'s USB
-  ports make this a $10 fix.
+- **SQLite, the vault, and the file archive all live on the 256 GB USB stick, not the
+  microSD.** A database committing writes every 30 minutes for a year is exactly the workload
+  that kills SD cards. The SD holds the OS only.
+- **Reformat the stick to ext4 before using it.** It almost certainly ships as exFAT or NTFS,
+  and both are wrong here: exFAT has no POSIX permissions, no symlinks, and no reliable file
+  locking, which makes SQLite genuinely corruption-prone rather than merely slow — and git
+  loses file modes on it. `mkfs.ext4`, then mount by UUID in `/etc/fstab` so a reboot with the
+  stick in a different port doesn't silently start a fresh empty database.
+- **Run SQLite in WAL mode** (`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL`). Cheap
+  flash sticks have poor random-write performance, and on the 3B+ the USB bus is shared with
+  Ethernet (its NIC is USB-attached), so the two contend. WAL turns the write pattern into
+  appends and makes that contention a non-issue at this workload.
 
 ---
 
@@ -183,9 +192,15 @@ scraped_at: 2026-09-07T14:32
 Frontmatter is the point — it makes the whole vault queryable from Dataview, so
 `Dashboards/Upcoming.md` is a live view rather than a generated file that goes stale.
 
-**Binaries stay out of git.** Original PDFs and decks go in a gitignored `_originals/` on the
-laptop; only the markdown extractions are committed. A semester of slide decks would bloat the
-repo into uselessness otherwise. (git-lfs is the escape hatch if you decide you want them.)
+**Binaries stay out of git, but they no longer stay off the Pi.** Original PDFs and decks go
+in a gitignored `_originals/`, and with 256 GB the Pi keeps a full copy alongside the laptop's.
+Only markdown extractions are committed — a semester of slide decks would bloat the repo into
+uselessness. (git-lfs is the escape hatch if you ever want them versioned.)
+
+That extra copy unlocks something the earlier storage budget ruled out: **the web app can serve
+the original file.** A card for "Assignment 2" can link straight to the actual PDF, opened on
+your phone from anywhere via the tunnel — no Brightspace login, no hunting through content
+modules. Worth building in Phase 5 while the card UI is already open.
 
 ---
 
