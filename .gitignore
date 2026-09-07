@@ -2,6 +2,7 @@ phase0/phase0-report.md
 scraper/session.json
 scraper/collected.json
 scraper/found_dates.json
+scraper/brightspace.db*
 scraper/_originals/
 scraper/extracted/
 scraper/api_key.txt

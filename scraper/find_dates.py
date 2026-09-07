@@ -21,6 +21,9 @@ from pathlib import Path
 
 import anthropic
 
+import store
+from download import safe_name
+
 HERE = Path(__file__).parent
 EXTRACTED = HERE / "extracted"
 COLLECTED = HERE / "collected.json"
@@ -206,28 +209,40 @@ def current_term():
 
 
 def load_documents(all_docs):
-    """(course, document name, text) for everything worth reading."""
+    """Every document worth reading, tagged with the course it belongs to."""
+    courses = json.loads(COLLECTED.read_text(encoding="utf-8")) if COLLECTED.exists() else []
+    by_folder = {safe_name(c["name"], 40): c for c in courses}
     docs = []
+
+    def add(course, kind, title, text):
+        if (text or "").strip():
+            docs.append({"course": course, "kind": kind, "title": title, "text": text})
+
     for folder in sorted(EXTRACTED.iterdir()) if EXTRACTED.exists() else []:
         if not folder.is_dir():
             continue
+        course = by_folder.get(folder.name)
+        if course is None:
+            continue
         for f in sorted(folder.glob("*.txt")):
+            if f.name == "_links.txt":
+                continue
             is_syllabus = "syllab" in f.stem.lower()
             if not all_docs and not is_syllabus:
                 continue
             text = f.read_text(encoding="utf-8", errors="replace")
             if not is_syllabus and not looks_dated(text):
                 continue
-            docs.append((folder.name, f.stem, text))
+            add(course, "file", f.stem, text)
 
-    if all_docs and COLLECTED.exists():
-        for course in json.loads(COLLECTED.read_text(encoding="utf-8")):
+    if all_docs:
+        for course in courses:
             name = course["name"][:40]
 
             for a in course.get("announcements", []):
                 body = (a.get("Body") or {}).get("Text", "") or ""
                 if body.strip():
-                    docs.append((name, f"announcement: {a.get('Title','')}"[:60], body))
+                    add(course, "announcement", (a.get("Title") or "")[:80], body)
 
             # Quizzes and assignments carry their own due dates as real fields,
             # but the text inside them often mentions further dates -- late
@@ -238,20 +253,19 @@ def load_documents(all_docs):
                     deep_text(q.get("Instructions")),
                 ]))
                 if body.strip():
-                    docs.append((name, f"quiz: {q.get('Name','')}"[:60],
-                                 with_known(q.get("Name"), q.get("DueDate")
-                                            or q.get("EndDate"), body)))
+                    add(course, "quiz", (q.get("Name") or "")[:80],
+                        with_known(q.get("Name"),
+                                   q.get("DueDate") or q.get("EndDate"), body))
 
             for a in course.get("assignments", []):
                 body = deep_text(a.get("CustomInstructions"))
                 if body.strip():
-                    docs.append((name, f"assignment: {a.get('Name','')}"[:60],
-                                 with_known(a.get("Name"), a.get("DueDate"), body)))
+                    add(course, "assignment", (a.get("Name") or "")[:80],
+                        with_known(a.get("Name"), a.get("DueDate"), body))
 
             for m in course.get("modules", []):
                 if (m.get("description") or "").strip():
-                    docs.append((name, f"folder: {m.get('title','')}"[:60],
-                                 m["description"]))
+                    add(course, "folder", (m.get("title") or "")[:80], m["description"])
 
             # Discussions: a professor answering "when is this due" in a
             # thread is often the only place that date is written down.
@@ -263,11 +277,8 @@ def load_documents(all_docs):
                                       f"{strip_html(post.get('body') or '')}")
                     body = "\n\n".join(c for c in chunks if c.strip())
                     if body.strip():
-                        docs.append((
-                            name,
-                            f"discussion: {forum.get('title','')} / {topic.get('title','')}"[:60],
-                            body,
-                        ))
+                        add(course, "discussion",
+                            f"{forum.get('title','')} / {topic.get('title','')}"[:80], body)
 
             for cl in course.get("checklists", []):
                 lines = [deep_text(cl.get("description"))]
@@ -277,22 +288,22 @@ def load_documents(all_docs):
                                  f"{deep_text(item.get('description'))}")
                 body = "\n".join(l for l in lines if l.strip())
                 if body.strip():
-                    docs.append((name, f"checklist: {cl.get('name','')}"[:60], body))
+                    add(course, "checklist", (cl.get("name") or "")[:80], body)
 
             for sv in course.get("surveys", []):
                 body = "\n".join(filter(None, [
                     deep_text(sv.get("Description")), deep_text(sv.get("Instructions"))]))
                 if body.strip():
-                    docs.append((name, f"survey: {sv.get('Name','')}"[:60], body))
+                    add(course, "survey", (sv.get("Name") or "")[:80], body)
 
             overview = deep_text(course.get("overview", {}).get("Description"))
             if overview.strip():
-                docs.append((name, "course overview", overview))
+                add(course, "overview", "course overview", overview)
 
             for g in course.get("grades", []):
                 body = deep_text(g.get("Description"))
                 if body.strip():
-                    docs.append((name, f"grade item: {g.get('Name','')}"[:60], body))
+                    add(course, "grade", (g.get("Name") or "")[:80], body)
     return docs
 
 
@@ -385,45 +396,78 @@ def main():
     if not docs:
         sys.exit("Nothing to read. Run download.py first.")
 
-    print(f"{len(docs)} documents to read using: {', '.join(keys)}")
-    if compare:
-        print("(comparing two models on your syllabi -- add --all for everything)\n")
-    else:
-        print()
-
     window = term_window(current_term())
     if window[0]:
-        print(f"Only accepting dates between {window[0]} and {window[1]}\n")
+        print(f"Only accepting dates between {window[0]} and {window[1]}")
 
+    db = store.connect()
+    run_id = store.start_run(db, "compare" if compare else keys[0])
     client = anthropic.Anthropic(api_key=key)
+
     totals = {k: [0, 0, 0] for k in keys}      # dates, input tokens, output tokens
     results = []
+    seen = read = new_cards = 0
 
-    for course, doc, text in docs:
-        print(f"{course}\n  {doc}")
+    # Comparing two models means asking twice about the same text, so the
+    # already-read shortcut has to stay out of the way.
+    reread = compare or "--force" in sys.argv
+
+    print(f"{len(docs)} documents found; skipping any already read\n")
+
+    for entry in docs:
+        course = entry["course"]
+        course_id = store.upsert_course(db, course["id"], course["name"], course.get("term"))
+        doc_id, needs = store.see_document(
+            db, course_id, entry["kind"], entry["title"], entry["text"])
+        seen += 1
+        if not needs and not reread:
+            continue
+
+        read += 1
+        print(f"{course['name'][:40]}\n  [{entry['kind']}] {entry['title'][:56]}")
         for key in keys:
-            dates, tin, tout = ask(client, MODELS[key], course, doc, text, window)
+            dates, tin, tout = ask(client, MODELS[key], course["name"],
+                                   entry["title"], entry["text"], window)
             totals[key][0] += len(dates)
             totals[key][1] += tin
             totals[key][2] += tout
-            label = f"  {key}: {len(dates)} found" if compare else f"  {len(dates)} found"
-            print(label)
+            print(f"  {key}: {len(dates)} found" if compare else f"  {len(dates)} found")
             show(dates)
-            results.append({"course": course, "document": doc, "model": key, "dates": dates})
+            results.append({"course": course["name"], "document": entry["title"],
+                            "model": key, "dates": dates})
+            # Only one model's findings belong in the database; a comparison
+            # run would otherwise store both and double every card.
+            if key == keys[0]:
+                new_cards += store.save_dates(db, course_id, doc_id, dates)
+        store.mark_read(db, doc_id)
         print()
 
     OUT.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    spent = sum(cost(k, totals[k][1], totals[k][2]) for k in keys)
+    store.finish_run(db, run_id, seen, read, new_cards, spent)
+    db.commit()
 
     print("=" * 66)
-    pending = sum(1 for b in results for d in b["dates"] if d.get("pending"))
+    if read == 0:
+        print("Nothing new to read -- every document is unchanged since last time.")
+        print("Add --force to read them all again anyway.")
     for key in keys:
         found, tin, tout = totals[key]
-        print(f"{key:<8} {found - pending:>3} dated   {pending:>3} awaiting a date"
-              f"   ${cost(key, tin, tout):.4f} for this run")
+        print(f"{key:<8} {found:>3} found   ${cost(key, tin, tout):.4f}")
+    print(f"\n{read} of {seen} documents needed reading. {new_cards} new deadlines stored.")
+
     if compare:
         print("\nIf both found the same dates, use haiku -- it is a fifth of the price.")
         print("If sonnet found real ones haiku missed, the extra cost is worth it.")
-    print(f"\n?  = medium confidence, ??  = low (check these)\nSaved to: {OUT}")
+
+    totals_db = store.summary(db)
+    print(f"\nWaiting for you: {totals_db['new']} dated, "
+          f"{totals_db['pending']} with no date yet")
+    print(f"Already handled:  {totals_db['accepted']} accepted, "
+          f"{totals_db['dismissed']} dismissed")
+    print(f"Spent all time:   ${totals_db['spent']:.2f}")
+    print("\nSee them with:  python cards.py")
+    db.close()
 
 
 if __name__ == "__main__":
