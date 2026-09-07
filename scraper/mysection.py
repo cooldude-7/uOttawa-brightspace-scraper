@@ -11,14 +11,33 @@ assignment, is your section -- which is evidence rather than a guess.
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import store
 
 HERE = Path(__file__).parent
-LOCAL = ZoneInfo("America/Toronto")
+
+
+def nth_sunday(year, month, n):
+    first = date(year, month, 1)
+    return first + timedelta(days=(6 - first.weekday()) % 7 + 7 * (n - 1))
+
+
+def ottawa_offset(moment):
+    """Hours behind UTC in Ottawa, without needing a timezone database.
+
+    Windows Python ships no IANA data, and requiring a package for one
+    subtraction is not worth it. Canada has used the same rule since 2007:
+    daylight time from the second Sunday in March to the first Sunday in
+    November, changing at 02:00 local.
+    """
+    year = moment.year
+    starts = datetime.combine(nth_sunday(year, 3, 2),
+                              datetime.min.time(), timezone.utc) + timedelta(hours=7)
+    ends = datetime.combine(nth_sunday(year, 11, 1),
+                            datetime.min.time(), timezone.utc) + timedelta(hours=6)
+    return -4 if starts <= moment < ends else -5
 
 
 def local(stamp):
@@ -31,7 +50,8 @@ def local(stamp):
         return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(LOCAL)
+    dt = dt.astimezone(timezone.utc)
+    return dt + timedelta(hours=ottawa_offset(dt))
 
 
 def main():
