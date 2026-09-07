@@ -181,9 +181,16 @@ def api_key():
     way out of the browser.
     """
     if KEY_FILE.exists():
-        key = "".join(KEY_FILE.read_text(encoding="utf-8").split())
+        key = "".join(KEY_FILE.read_text(encoding="utf-8", errors="replace").split())
         if key:
             return key
+        # An empty file means an editor was opened and nothing was saved.
+        # Falling through to the environment silently would then use a stale
+        # key and report it as invalid, which hides the real problem.
+        sys.exit(
+            f"{KEY_FILE} exists but is empty.\n\n"
+            f"Open it, paste the key, and press Ctrl+S to save before closing."
+        )
     key = "".join((os.environ.get("ANTHROPIC_API_KEY") or "").split())
     if key:
         return key
