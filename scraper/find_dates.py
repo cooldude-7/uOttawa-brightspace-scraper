@@ -50,7 +50,7 @@ SCHEMA = {
                     "kind": {
                         "type": "string",
                         "enum": ["assignment", "midterm", "final_exam", "quiz",
-                                 "lab", "reading", "presentation", "other"],
+                                 "lab", "session", "reading", "presentation", "other"],
                     },
                     "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "source_excerpt": {"type": "string"},
@@ -87,10 +87,32 @@ original wording in source_excerpt.
 - Use 24-hour HH:MM for time, or "" if no time is given.
 - source_excerpt must be the actual sentence or table row the date came from, \
 copied verbatim, so the student can check it.
-- Weekly recurring lectures, tutorials, and DGD sessions with nothing to hand in are NOT deadlines. Skip those. A lab only counts if there is a report or a submission.
-- NEVER invent a date. If the document says an assignment is due weekly but gives no actual dates, do not generate a series of dates by counting forward. Report only dates the document states.
-- Every date you return must appear in, or be directly stated by, the text. The source_excerpt must contain the evidence. If you cannot quote evidence, leave it out.
-- If the document contains no deadlines at all, return an empty list. An empty list is a correct and useful answer.
+- NEVER invent a date. If the document says assignments are due weekly but gives no \
+actual dates, do NOT generate a series by counting forward. Report only dates the \
+document actually states.
+- Every date must appear in, or be directly stated by, the text, and source_excerpt \
+must contain that evidence. No evidence, no date.
+
+Two things that are easy to wrongly discard, and are both wanted:
+
+- A deliverable that is NAMED BUT NOT YET SCHEDULED ("two midterms, dates TBA", \
+"4 economics assignments", "weekly problem sets"). Return it with date set to "" and \
+a title naming the thing. These get tracked as awaiting a date. Do not skip them, and \
+do not guess a date for them.
+- A SCHEDULED EVENT the student attends on a specific stated date -- a lab session, \
+tutorial, DGD, review session, client meeting -- with kind "session". The student \
+plans their week around these alongside the deadlines.
+
+But only where the document gives a specific date. Do NOT expand "labs run every \
+Wednesday" into a list of Wednesdays, and do not report ordinary weekly lectures.
+
+Picking kind: "midterm" for a test during term, "final_exam" only for the end-of-term \
+final, "quiz" for short in-class tests, "lab" for a lab report or lab submission, \
+"session" for something attended rather than handed in, "assignment" for anything \
+else submitted.
+
+- If the document genuinely contains nothing, return an empty list. That is a correct \
+and useful answer.
 
 --- DOCUMENT TEXT ---
 {text}
