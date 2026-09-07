@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<title>Deadlines</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --ink: #16191f;
+    --muted: #6b7280;
+    --line: #e3e6ea;
+    --accent: #2563eb;
+    --yes: #12805c;
+    --yes-bg: #e7f6f0;
+    --no: #9aa1ab;
+    --no-bg: #f0f2f4;
+    --urgent: #c2410c;
+    --soon: #a16207;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1116; --card: #171b22; --ink: #e8eaed; --muted: #9aa1ab;
+      --line: #262c36; --accent: #6ea8fe; --yes: #3ddc9a; --yes-bg: #12271f;
+      --no: #7b828c; --no-bg: #1e232b; --urgent: #ff8a5c; --soon: #e0b341;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    position: sticky; top: 0; z-index: 10; background: var(--bg);
+    padding: 18px 16px 10px; border-bottom: 1px solid var(--line);
+  }
+  h1 { margin: 0 0 2px; font-size: 21px; letter-spacing: -0.02em; }
+  .stats { color: var(--muted); font-size: 13px; }
+  .stats b { color: var(--ink); font-weight: 600; }
+
+  .filters {
+    display: flex; gap: 7px; overflow-x: auto; padding: 10px 16px 12px;
+    scrollbar-width: none; background: var(--bg);
+    position: sticky; top: 68px; z-index: 9; border-bottom: 1px solid var(--line);
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; padding: 7px 13px; border-radius: 999px; font-size: 13px;
+    border: 1px solid var(--line); background: var(--card); color: var(--muted);
+    cursor: pointer; white-space: nowrap; font-family: inherit;
+  }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  main { padding: 14px 16px 40px; max-width: 720px; margin: 0 auto; }
+  .group-label {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--muted); margin: 22px 0 9px; font-weight: 600;
+  }
+  .group-label:first-child { margin-top: 4px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 13px 14px; margin-bottom: 9px;
+    display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: start;
+    transition: opacity .18s, transform .18s;
+  }
+  .card.going { opacity: 0; transform: translateX(28px); }
+  .when { font-size: 12.5px; color: var(--muted); margin-bottom: 3px; }
+  .when .soon { font-weight: 600; }
+  .card[data-urgency="now"] .when .soon { color: var(--urgent); }
+  .card[data-urgency="soon"] .when .soon { color: var(--soon); }
+  .title { font-size: 15px; font-weight: 550; margin: 0 0 5px; line-height: 1.3; }
+  .tags { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+  .tag {
+    font-size: 11px; padding: 2px 7px; border-radius: 5px;
+    background: var(--no-bg); color: var(--muted);
+  }
+  .tag.unsure { color: var(--soon); }
+  details { margin-top: 7px; }
+  summary {
+    font-size: 12px; color: var(--accent); cursor: pointer; list-style: none;
+    display: inline-block; padding: 2px 0;
+  }
+  summary::-webkit-details-marker { display: none; }
+  details p {
+    margin: 6px 0 0; font-size: 12.5px; color: var(--muted);
+    border-left: 2px solid var(--line); padding-left: 9px; font-style: italic;
+  }
+
+  .actions { display: flex; gap: 7px; }
+  .actions button {
+    width: 42px; height: 42px; border-radius: 11px; border: 1px solid var(--line);
+    font-size: 17px; cursor: pointer; background: var(--no-bg); color: var(--no);
+    font-family: inherit; display: grid; place-items: center;
+  }
+  .actions .yes { background: var(--yes-bg); color: var(--yes); border-color: transparent; }
+  .actions button:active { transform: scale(.92); }
+
+  .empty { text-align: center; color: var(--muted); padding: 56px 20px; font-size: 14px; }
+
+  .undo {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    background: var(--ink); color: var(--bg); padding: 11px 16px;
+    border-radius: 11px; font-size: 13.5px; display: none; gap: 14px;
+    align-items: center; box-shadow: 0 5px 22px rgba(0,0,0,.22); z-index: 20;
+  }
+  .undo.show { display: flex; }
+  .undo button {
+    background: none; border: none; color: var(--bg); font-weight: 650;
+    text-decoration: underline; cursor: pointer; font-size: 13.5px; font-family: inherit;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Deadlines</h1>
+  <div class="stats" id="stats">loading…</div>
+</header>
+
+<div class="filters" id="filters"></div>
+
+<main id="list"></main>
+
+<div class="undo" id="undo">
+  <span id="undo-text"></span>
+  <button onclick="undoLast()">Undo</button>
+</div>
+
+<script>
+let CARDS = [], COURSES = [], course = "all", sessions = "hide", lastAction = null, undoTimer = null;
+
+const api = (path, opts) => fetch(path, opts).then(r => r.json());
+
+async function load() {
+  const data = await api(`/api/cards?sessions=${sessions}`);
+  CARDS = data.cards;
+  COURSES = data.courses;
+  renderFilters();
+  render();
+  const s = await api('/api/summary');
+  document.getElementById('stats').innerHTML =
+    `<b>${s.new}</b> waiting · <b>${s.pending}</b> not scheduled yet · ${s.accepted} kept · ${s.dismissed} dismissed`;
+}
+
+function renderFilters() {
+  const chips = [['all', 'All courses'], ...COURSES.map(c => [c, short(c)])];
+  const el = document.getElementById('filters');
+  el.innerHTML = chips.map(([v, label]) =>
+    `<button class="chip" data-course="${esc(v)}" aria-pressed="${course === v}"
+       onclick="setCourse('${esc(v).replace(/'/g, "\\'")}')">${esc(label)}</button>`
+  ).join('') +
+  `<button class="chip" aria-pressed="${sessions === 'all'}" onclick="toggleSessions()">
+     ${sessions === 'hide' ? 'Show labs &amp; tutorials' : 'Hide labs &amp; tutorials'}</button>`;
+}
+
+const short = c => (c || '').split(/\s{2,}|\s-\s/)[0].trim().slice(0, 12) || c;
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+function setCourse(c) { course = c; renderFilters(); render(); }
+function toggleSessions() { sessions = sessions === 'hide' ? 'all' : 'hide'; load(); }
+
+function bucket(card) {
+  if (card.pending || card.days === null) return 'No date yet';
+  if (card.days < 0) return 'Overdue';
+  if (card.days === 0) return 'Today';
+  if (card.days === 1) return 'Tomorrow';
+  if (card.days <= 7) return 'This week';
+  if (card.days <= 30) return 'This month';
+  return 'Later';
+}
+
+const ORDER = ['Overdue', 'Today', 'Tomorrow', 'This week', 'This month', 'Later', 'No date yet'];
+
+function render() {
+  const shown = CARDS.filter(c => course === 'all' || c.course === course);
+  const list = document.getElementById('list');
+
+  if (!shown.length) {
+    list.innerHTML = `<div class="empty">Nothing waiting on you here.</div>`;
+    return;
+  }
+
+  const groups = {};
+  shown.forEach(c => (groups[bucket(c)] ||= []).push(c));
+
+  list.innerHTML = ORDER.filter(g => groups[g]).map(g => `
+    <div class="group-label">${g}</div>
+    ${groups[g].map(cardHTML).join('')}
+  `).join('');
+}
+
+function cardHTML(c) {
+  const urgency = c.days === null ? '' : c.days <= 1 ? 'now' : c.days <= 7 ? 'soon' : '';
+  const soon = c.pending || c.days === null ? 'not scheduled'
+    : c.days < 0 ? `${-c.days}d ago`
+    : c.days === 0 ? 'today' : c.days === 1 ? 'tomorrow' : `${c.days} days`;
+  const unsure = c.confidence !== 'high'
+    ? `<span class="tag unsure">${c.confidence === 'low' ? 'unsure' : 'check'}</span>` : '';
+
+  return `
+  <article class="card" data-id="${c.id}" data-urgency="${urgency}">
+    <div>
+      <div class="when">${esc(c.when)}${c.time ? ' · ' + esc(c.time) : ''}
+        ${c.when ? '·' : ''} <span class="soon">${soon}</span></div>
+      <h2 class="title">${esc(c.title)}</h2>
+      <div class="tags">
+        <span class="tag">${esc(c.kind)}</span>
+        <span class="tag">${esc(short(c.course))}</span>
+        ${unsure}
+      </div>
+      ${c.evidence ? `<details><summary>where this came from</summary>
+        <p>${esc(c.evidence.slice(0, 320))}</p></details>` : ''}
+    </div>
+    <div class="actions">
+      <button class="no" onclick="decide(${c.id}, 'dismissed')" aria-label="Dismiss">✕</button>
+      <button class="yes" onclick="decide(${c.id}, 'accepted')" aria-label="Keep">✓</button>
+    </div>
+  </article>`;
+}
+
+async function decide(id, status) {
+  const card = CARDS.find(c => c.id === id);
+  const el = document.querySelector(`.card[data-id="${id}"]`);
+  if (el) el.classList.add('going');
+
+  // Remove it locally straight away; a tap should never wait on the network.
+  setTimeout(() => { CARDS = CARDS.filter(c => c.id !== id); render(); }, 180);
+  await api('/api/decide', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id, status})
+  });
+
+  lastAction = {id, card};
+  showUndo(status === 'accepted' ? 'Kept' : 'Dismissed', card);
+  api('/api/summary').then(s => {
+    document.getElementById('stats').innerHTML =
+      `<b>${s.new}</b> waiting · <b>${s.pending}</b> not scheduled yet · ${s.accepted} kept · ${s.dismissed} dismissed`;
+  });
+}
+
+function showUndo(what, card) {
+  const bar = document.getElementById('undo');
+  document.getElementById('undo-text').textContent = `${what}: ${card.title.slice(0, 34)}`;
+  bar.classList.add('show');
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => bar.classList.remove('show'), 5000);
+}
+
+async function undoLast() {
+  if (!lastAction) return;
+  await api('/api/decide', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: lastAction.id, status: 'new'})
+  });
+  document.getElementById('undo').classList.remove('show');
+  lastAction = null;
+  load();
+}
+
+load();
+</script>
+</body>
+</html>
