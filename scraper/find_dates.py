@@ -83,8 +83,10 @@ original wording in source_excerpt.
 - Use 24-hour HH:MM for time, or "" if no time is given.
 - source_excerpt must be the actual sentence or table row the date came from, \
 copied verbatim, so the student can check it.
-- Weekly recurring lectures or labs with no deliverable are NOT deadlines. Skip those.
-- If the document contains no deadlines at all, return an empty list.
+- Weekly recurring lectures, tutorials, and DGD sessions with nothing to hand in are NOT deadlines. Skip those. A lab only counts if there is a report or a submission.
+- NEVER invent a date. If the document says an assignment is due weekly but gives no actual dates, do not generate a series of dates by counting forward. Report only dates the document states.
+- Every date you return must appear in, or be directly stated by, the text. The source_excerpt must contain the evidence. If you cannot quote evidence, leave it out.
+- If the document contains no deadlines at all, return an empty list. An empty list is a correct and useful answer.
 
 --- DOCUMENT TEXT ---
 {text}
@@ -129,7 +131,17 @@ def ask(client, model, course, doc, text):
         dates = json.loads(body).get("dates", [])
     except json.JSONDecodeError:
         dates = []
-    return dates, r.usage.input_tokens, r.usage.output_tokens
+
+    # A day or month of 00 cannot have been read from a document -- it is the
+    # shape a guessed date takes when only the month was known.
+    kept = []
+    for d in dates:
+        parts = (d.get("date") or "").split("-")
+        if len(parts) == 3 and "00" in parts[1:]:
+            print(f"    dropped invented date {d.get('date')} ({d.get('title','')[:40]})")
+            continue
+        kept.append(d)
+    return kept, r.usage.input_tokens, r.usage.output_tokens
 
 
 def cost(model_key, tin, tout):
