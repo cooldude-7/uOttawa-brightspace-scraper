@@ -2,7 +2,10 @@ r"""
 Reads the extracted course documents and pulls out every deadline.
 
     python -m pip install anthropic
-    set ANTHROPIC_API_KEY=sk-ant-...
+
+Put your API key in a file called api_key.txt next to this script.
+It is gitignored, so it never gets committed or shown in a terminal.
+
     python find_dates.py              compare two models on the syllabi
     python find_dates.py --all        read every document with one model
 
@@ -22,6 +25,7 @@ HERE = Path(__file__).parent
 EXTRACTED = HERE / "extracted"
 COLLECTED = HERE / "collected.json"
 OUT = HERE / "found_dates.json"
+KEY_FILE = HERE / "api_key.txt"
 
 MODELS = {
     "haiku": "claude-haiku-4-5",
@@ -168,13 +172,33 @@ def show(dates, indent="    "):
         print(f"{indent}{flag:<3}{when:<17}{d.get('kind',''):<13}{d.get('title','')[:44]}")
 
 
+def api_key():
+    """From api_key.txt if present, else the environment.
+
+    A key typed at a command prompt ends up in the window's history and in
+    anything pasted from it. A gitignored file avoids both, and stripping
+    whitespace here guards against a key that picked up a line break on its
+    way out of the browser.
+    """
+    if KEY_FILE.exists():
+        key = "".join(KEY_FILE.read_text(encoding="utf-8").split())
+        if key:
+            return key
+    key = "".join((os.environ.get("ANTHROPIC_API_KEY") or "").split())
+    if key:
+        return key
+    sys.exit(
+        f"No API key found.\n\n"
+        f"Get one at https://console.anthropic.com, then paste it into:\n"
+        f"    {KEY_FILE}\n\n"
+        f"Nothing else -- just the key on one line. That file is gitignored."
+    )
+
+
 def main():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit(
-            "No API key set. Get one at https://console.anthropic.com then run:\n"
-            "    set ANTHROPIC_API_KEY=sk-ant-...\n"
-            "in this same window, and run this script again."
-        )
+    key = api_key()
+    if not key.startswith("sk-ant-"):
+        sys.exit("That does not look like an Anthropic key -- they start with sk-ant-")
 
     all_docs = "--all" in sys.argv
     chosen = next((a.split("=")[1] for a in sys.argv if a.startswith("--model=")), None)
@@ -191,7 +215,7 @@ def main():
     else:
         print()
 
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(api_key=key)
     totals = {k: [0, 0, 0] for k in keys}      # dates, input tokens, output tokens
     results = []
 
