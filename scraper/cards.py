@@ -6,6 +6,8 @@ Your deadlines, and the check / X decision on each one.
     python cards.py --accepted      what you have said yes to
     python cards.py --dismissed     what you have said no to
     python cards.py --review        go through them one at a time
+    python cards.py --no-sessions   hide scheduled labs and tutorials
+    python cards.py --sessions      show only those
 
 Deciding here writes to the database. Later the same decisions come from
 tapping a card on your phone; this is the same thing without the web page.
@@ -45,10 +47,15 @@ def when(row):
     return label, f"{days} days"
 
 
-def show(rows, course_filter=None):
+def show(rows, course_filter=None, sessions="all"):
     by_course = {}
     for r in rows:
         if course_filter and course_filter.lower() not in (r["course_name"] or "").lower():
+            continue
+        is_session = r["kind"] == "session"
+        if sessions == "hide" and is_session:
+            continue
+        if sessions == "only" and not is_session:
             continue
         by_course.setdefault(r["course_name"], []).append(r)
 
@@ -63,7 +70,9 @@ def show(rows, course_filter=None):
         for r in items:
             label, soon = when(r)
             mark = {"high": "  ", "medium": " ?", "low": "??"}.get(r["confidence"], "  ")
-            print(f"  [{r['id']:>3}] {mark} {label:<22} {soon:<10} {r['title'][:44]}")
+            # A session is somewhere to be, not something to hand in.
+            tag = "attend" if r["kind"] == "session" else ""
+            print(f"  [{r['id']:>3}] {mark} {label:<22} {soon:<9} {tag:<7} {r['title'][:38]}")
             shown += 1
     return shown
 
@@ -112,9 +121,11 @@ def main():
         if flag in args:
             status = name
     course = next((a for a in args if not a.startswith("--")), None)
+    sessions = "hide" if "--no-sessions" in args else (
+        "only" if "--sessions" in args else "all")
 
     rows = store.cards(db, status)
-    count = show(rows, course)
+    count = show(rows, course, sessions)
 
     s = store.summary(db)
     print(f"\n{'-' * 60}")
