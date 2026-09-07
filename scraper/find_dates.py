@@ -197,7 +197,58 @@ def load_documents(all_docs):
                 if (m.get("description") or "").strip():
                     docs.append((name, f"folder: {m.get('title','')}"[:60],
                                  m["description"]))
+
+            # Discussions: a professor answering "when is this due" in a
+            # thread is often the only place that date is written down.
+            for forum in course.get("discussions", []):
+                for topic in forum.get("topics", []):
+                    chunks = [deep_text(topic.get("description"))]
+                    for post in topic.get("posts", []):
+                        chunks.append(f"{post.get('subject') or ''}\n"
+                                      f"{strip_html(post.get('body') or '')}")
+                    body = "\n\n".join(c for c in chunks if c.strip())
+                    if body.strip():
+                        docs.append((
+                            name,
+                            f"discussion: {forum.get('title','')} / {topic.get('title','')}"[:60],
+                            body,
+                        ))
+
+            for cl in course.get("checklists", []):
+                lines = [deep_text(cl.get("description"))]
+                for item in cl.get("items", []):
+                    lines.append(f"{item.get('name','')} "
+                                 f"{'(due ' + item['due'] + ')' if item.get('due') else ''}\n"
+                                 f"{deep_text(item.get('description'))}")
+                body = "\n".join(l for l in lines if l.strip())
+                if body.strip():
+                    docs.append((name, f"checklist: {cl.get('name','')}"[:60], body))
+
+            for sv in course.get("surveys", []):
+                body = "\n".join(filter(None, [
+                    deep_text(sv.get("Description")), deep_text(sv.get("Instructions"))]))
+                if body.strip():
+                    docs.append((name, f"survey: {sv.get('Name','')}"[:60], body))
+
+            overview = deep_text(course.get("overview", {}).get("Description"))
+            if overview.strip():
+                docs.append((name, "course overview", overview))
+
+            for g in course.get("grades", []):
+                body = deep_text(g.get("Description"))
+                if body.strip():
+                    docs.append((name, f"grade item: {g.get('Name','')}"[:60], body))
     return docs
+
+
+def strip_html(text):
+    """Discussion posts come back as HTML; the tags are noise to the reader."""
+    text = re.sub(r"<br\s*/?>|</p>", "\n", text or "", flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    for entity, char in (("&nbsp;", " "), ("&amp;", "&"), ("&lt;", "<"),
+                         ("&gt;", ">"), ("&quot;", '"'), ("&#39;", "'")):
+        text = text.replace(entity, char)
+    return re.sub(r"[ \t]{2,}", " ", text)
 
 
 def deep_text(field):

@@ -271,7 +271,85 @@ def collect_course(client, course):
         "quizzes": quizzes,
         "grades": get(client, f"/d2l/api/le/{LE}/{oid}/grades/") or [],
         "calendar": events if isinstance(events, list) else [],
+        "discussions": collect_discussions(client, oid),
+        "checklists": collect_checklists(client, oid),
+        "surveys": as_list(get(client, f"/d2l/api/le/{LE}/{oid}/surveys/")),
+        "overview": get(client, f"/d2l/api/le/{LE}/{oid}/overview") or {},
     }
+
+
+def as_list(data):
+    """Some endpoints return a bare list, others wrap it in Objects/Items."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("Objects", "Items"):
+            if isinstance(data.get(key), list):
+                return data[key]
+    return []
+
+
+def collect_discussions(client, oid):
+    """Forums, their topics, and the posts inside them.
+
+    Professors routinely answer "when is this due" in a discussion thread and
+    nowhere else, so the post bodies matter, not just the topic titles.
+    """
+    out = []
+    for forum in as_list(get(client, f"/d2l/api/le/{LE}/{oid}/discussions/forums/")):
+        fid = forum.get("ForumId") or forum.get("Id")
+        if fid is None:
+            continue
+        topics = []
+        for topic in as_list(get(
+                client, f"/d2l/api/le/{LE}/{oid}/discussions/forums/{fid}/topics/")):
+            tid = topic.get("TopicId") or topic.get("Id")
+            posts = as_list(get(
+                client,
+                f"/d2l/api/le/{LE}/{oid}/discussions/forums/{fid}/topics/{tid}/posts/",
+            )) if tid is not None else []
+            topics.append({
+                "id": tid,
+                "title": topic.get("Name") or topic.get("Title"),
+                "description": topic.get("Description"),
+                "start": topic.get("StartDate"),
+                "end": topic.get("EndDate"),
+                "due": topic.get("DueDate"),
+                "posts": [
+                    {"subject": p.get("Subject"), "body": p.get("Message"),
+                     "date": p.get("DatePosted")}
+                    for p in posts[:60]
+                ],
+            })
+        out.append({
+            "id": fid,
+            "title": forum.get("Name") or forum.get("Title"),
+            "description": forum.get("Description"),
+            "topics": topics,
+        })
+    return out
+
+
+def collect_checklists(client, oid):
+    """Checklist items carry their own due dates and are a tab of their own."""
+    out = []
+    for cl in as_list(get(client, f"/d2l/api/le/{LE}/{oid}/checklists/")):
+        cid = cl.get("ChecklistId") or cl.get("Id")
+        items = []
+        for cat in as_list(get(
+                client, f"/d2l/api/le/{LE}/{oid}/checklists/{cid}/categories/")) if cid else []:
+            kid = cat.get("CategoryId") or cat.get("Id")
+            for item in as_list(get(
+                    client,
+                    f"/d2l/api/le/{LE}/{oid}/checklists/{cid}/categories/{kid}/items/")):
+                items.append({
+                    "name": item.get("Name"),
+                    "description": item.get("Description"),
+                    "due": item.get("DueDate"),
+                })
+        out.append({"id": cid, "name": cl.get("Name"),
+                    "description": cl.get("Description"), "items": items})
+    return out
 
 
 # ------------------------------------------------------------------ summary
@@ -316,9 +394,13 @@ def main():
         prose = len(c["announcements"]) + sum(1 for m in c["modules"] if m["description"])
         total_exact += len(exact)
         total_prose += prose
-        short = c["name"][:40]
-        print(f"{short:<42} {len(exact):>3} dates {len(c['modules']):>4} folders "
-              f"{len(c['topics']):>4} files")
+        posts = sum(len(t["posts"]) for d in c.get("discussions", [])
+                    for t in d.get("topics", []))
+        checks = sum(len(cl["items"]) for cl in c.get("checklists", []))
+        short = c["name"][:36]
+        print(f"{short:<38} {len(exact):>3} dates {len(c['topics']):>4} files "
+              f"{len(c.get('announcements', [])):>3} posts {len(c.get('quizzes', [])):>3} quiz "
+              f"{len(c.get('assignments', [])):>3} asgn {posts:>3} disc {checks:>3} chk")
     print("=" * 64)
     print(f"{total_exact} deadlines found as exact dates -- no AI needed for these.")
     print(f"{total_prose} announcements and descriptions to read for dates written in text.")
