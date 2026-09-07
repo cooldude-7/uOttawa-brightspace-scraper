@@ -244,7 +244,23 @@ after extraction ≈ 3.75M input tokens, ~225K output.
 | Sonnet 5 | $2 / $10 | ~$10 | ~$0.20/day |
 | Opus 5 | $5 / $25 | ~$24 | ~$0.50/day |
 
-**Recommendation: measure before committing.** Pulling a deadline out of a clean announcement
+**DECIDED (2026-09-07): Sonnet 5.** Measured on three real syllabi, and the gap was not
+subtle. On the Thermodynamics outline Haiku 4.5 returned 11 dates and Sonnet returned 0.
+Sonnet was right: every Haiku date was fabricated. All eight "weekly assignments" cited the
+same dateless sentence — *"8 weekly assignments will be given in total"* — from which it
+counted forward and manufactured specific due dates. Both midterms cited *"The midterm dates
+will be decided in class"* and were returned as `2026-10-00` and `2026-11-00`. On the Materials
+outline Haiku also added ten tutorial sessions with nothing to submit.
+
+The failure mode matters more than the count. Fabricated deadlines are worse than no app at
+all: a student who trusts a hallucinated midterm date is worse off than one who never had the
+tool. Recall bias is right for *finding* dates, never for *inventing* them, and Haiku could
+not hold that line. At roughly $0.07 per full syllabus pass the price difference is
+irrelevant next to that.
+
+Original reasoning, kept because the method is reusable:
+
+<details><summary>Measure before committing</summary> Pulling a deadline out of a clean announcement
 is easy; finding one buried on slide 34 of a course outline, or phrased as "the report is due
 the Friday after reading week," is not. Since reading documents *is* the product, accuracy
 matters more than the token bill here.
@@ -256,6 +272,24 @@ Sonnet 5 for long documents like outlines and decks, where the reasoning is hard
 
 Recall bias is deliberate: it is better to surface a date that turns out to be nothing (one
 click to dismiss) than to miss a real one. Tune the prompt to over-report.
+
+</details>
+
+### Dates that do not exist yet
+
+The Thermodynamics syllabus says the midterm dates *"will be decided in class"* and that
+assignments come *"weekly"* with no schedule. Those are not extraction failures — the
+information genuinely is not written down yet. It will arrive later, in an announcement.
+
+This is the strongest argument for the recurring scrape, and it deserves a feature of its
+own: **pending items**. When a document promises a deliverable without a date ("two midterms,
+dates TBA", "8 weekly assignments"), record it as an open expectation rather than discarding
+it. The card reads *"MCG2130 — 2 midterms, dates not announced yet"*, and when an announcement
+finally names one, it resolves against that expectation and becomes a real card.
+
+Without this, a course whose professor announces everything verbally looks identical to a
+course with no deadlines. With it, the app can say what it is still waiting on — which is the
+question a student actually has in week one.
 
 Prompt caching is a minor lever here: the extraction system prompt is short relative to each
 document, and Haiku's minimum cacheable prefix may not even be met. The real savings are in
