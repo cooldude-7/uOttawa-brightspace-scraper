@@ -21,8 +21,8 @@ EXTRACTED = HERE / "extracted"
 # Text pullers are optional; report what's missing instead of crashing.
 READERS = {}
 try:
-    import fitz  # pymupdf
-    READERS["pdf"] = lambda p: "\n".join(pg.get_text() for pg in fitz.open(p))
+    import pymupdf
+    READERS["pdf"] = lambda p: "\n".join(pg.get_text() for pg in pymupdf.open(p))
 except ImportError:
     try:
         from pypdf import PdfReader
@@ -58,6 +58,23 @@ try:
     READERS["docx"] = lambda p: "\n".join(
         para.text for para in docx.Document(p).paragraphs
     )
+except ImportError:
+    pass
+
+try:
+    import openpyxl
+
+    def _xlsx(path):
+        out = []
+        for sheet in openpyxl.load_workbook(path, data_only=True).worksheets:
+            out.append(f"\n--- sheet: {sheet.title} ---")
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c) for c in row if c is not None]
+                if cells:
+                    out.append("\t".join(cells))
+        return "\n".join(out)
+
+    READERS["xlsx"] = _xlsx
 except ImportError:
     pass
 
@@ -152,11 +169,14 @@ def main():
             continue
 
         got = read = 0
+        links = []
         for topic in topics:
             path, note = download_topic(client, topic, ORIGINALS / code)
             label = (topic.get("title") or "?")[:46]
             if not path:
                 print(f"  skip  {label:<48} {note}")
+                if note.startswith("not a file"):
+                    links.append(topic)
                 continue
             got += 1
             out, detail = extract(path, EXTRACTED / code)
@@ -167,9 +187,21 @@ def main():
             else:
                 print(f"  saved {label:<48} {detail}")
 
+        if links:
+            # These are usually assignment dropboxes or quizzes, which the
+            # assignments and quizzes endpoints already report with real due
+            # dates. Recorded rather than discarded so that can be checked.
+            folder = EXTRACTED / code
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "_links.txt").write_text(
+                "\n".join(f"{t.get('title','?')}\t{t.get('url','')}" for t in links),
+                encoding="utf-8",
+            )
+
         grand_files += got
         grand_text += read
-        print(f"  -> {got} downloaded, {read} readable")
+        note = f", {len(links)} links noted" if links else ""
+        print(f"  -> {got} downloaded, {read} readable{note}")
 
     print("\n" + "=" * 64)
     print(f"{grand_files} files downloaded, {grand_text} turned into readable text")
