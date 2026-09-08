@@ -73,6 +73,7 @@ python gcal.py --check     reconcile calendar against stored decisions
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
+python vault.py            build the Obsidian vault (no API cost)
 ```
 
 `update.py` chains `collect.py` → `exact.py` → `download.py` → `find_dates.py`
@@ -97,6 +98,11 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   whole course at once and ties each task to the dated thing it must precede.
   It may only pick from anchors it was given — an invented one is discarded and
   printed — and a task with no real anchor stays undated on purpose.
+- **vault.py** + **skills.py** — the Obsidian vault. A note per course holding
+  what is due, what is new and what to read, plus every extracted document and
+  announcement as its own note. Deterministic and free — it only reshapes what
+  is already in the database. `skills.py` seeds the editable markdown in
+  `Skills/` once and never touches it again.
 - **store.py** — SQLite. Change detection, duplicate collapsing, decisions.
   `course_parts()` turns "MCG2360  A00  Engineering Materials I [ LEC ] 20269"
   into a code and a title, because nobody remembers the codes.
@@ -128,6 +134,11 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   for lab sections A1–A5. The section marker is part of an event's identity,
   or A2 and A5 collapse into one. The user is **A4**, established by matching
   their personal due date against the text, stored in `me.json`.
+- **The vault must never eat the user's writing.** A generated note carries
+  `generated: true`; `vault.py` refuses to overwrite any file without it, so
+  deleting that line claims a note permanently. `Notes/` is never generated at
+  all, and `Skills/` is seeded once. Weakening this to "just regenerate
+  everything" would cost the user work they cannot get back.
 - **A linked date is inferred, not stated.** `linked_to` being set is what
   says so, and the card shows "before Lab 5" in a different colour for exactly
   that reason. Never let a linked date render as though a document published it.

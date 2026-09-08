@@ -54,6 +54,11 @@ SESSION = DATA / "session.json"
 COLLECTED = DATA / "collected.json"
 FOUND = DATA / "found_dates.json"
 ORIGINALS = DATA / "_originals"
+# The Obsidian vault, and the private profile the study skill reads. The
+# profile is never inside the vault: the vault is meant to be synced, and a
+# psychoeducational report is not a thing to sync anywhere by accident.
+VAULT = DATA / "vault"
+PROFILE = DATA / "profile"
 EXTRACTED = DATA / "extracted"
 
 # Secrets. Kept with the data rather than the code so that nothing secret is

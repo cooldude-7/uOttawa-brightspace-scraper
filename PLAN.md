@@ -427,8 +427,29 @@ real measurement of how long a session survives.
 `content_hash` change detection, `incremental_scrape` on a timer. Deliverable: new
 announcements appear in the DB within 30 minutes.
 
-**Phase 3 — Vault builder (laptop).** Full scrape, file download, PDF/PPTX/DOCX → markdown,
-frontmatter, folder layout, git commit + push. Deliverable: a real Obsidian vault you can open.
+**Phase 3 — Vault builder. Foundation built (2026-09-08), and the scope grew.** `vault.py`
+writes a note per course from the database and the already-extracted text: what is due, what
+is announced but undated, the task list, every document and announcement as its own note.
+Deterministic, no API cost, safe to run on every scrape.
+
+The user's actual ask is larger than §6 described, and better. Not an archive to search — a
+per-course brain that keeps up with the deadlines, plus **user-editable skills**: one markdown
+file per kind of work (`assignment`, `lab`, `quiz`, `study`) saying how to handle it, which
+they edit in Obsidian rather than asking anyone to change code. A prep step then runs a skill
+against a real item.
+
+Two design rules fixed at the start:
+
+- **Generated notes never overwrite the user's writing.** `generated: true` in the frontmatter
+  is the marker; deleting it claims the note forever. `Notes/` is never generated, `Skills/`
+  is seeded once. A rebuild that eats a week of lecture notes is a worse failure than any
+  stale file.
+- **Setting work up, not doing it.** Gathering the spec and rubric, structuring, checklists,
+  practice questions, study material: yes. Writing the graded submission: no.
+
+Still to build: `prep.py`, which runs a skill against one item — and the private
+`profile/study-profile.md`, written from the user's psychoeducational report, which the study
+skill reads. That file lives outside the vault and outside git, deliberately.
 
 **Phase 4 — Date extraction.** Two-stage pipeline, `dedup_key` logic, `pending` queue.
 Deliverable: a populated card list, sortable by course.

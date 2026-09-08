@@ -13,3 +13,5 @@ scraper/google_token.json
 *.key
 __pycache__/
 .venv/
+scraper/vault/
+scraper/profile/
