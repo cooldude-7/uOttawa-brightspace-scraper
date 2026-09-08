@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import gcal
+import paths
 import store
 
 HERE = Path(__file__).parent
@@ -154,6 +155,89 @@ def decide(decision: Decision):
 
     return {"ok": True, "id": decision.id, "status": decision.status,
             "calendar": calendar}
+
+
+# ----------------------------------------------------------------- the vault
+
+FOLDER_ORDER = {"": 0, "Work": 1, "Content": 2, "Announcements": 3, "Notes": 4}
+
+
+def strip_front(text):
+    """Drop the YAML block off the top of a note."""
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            text = text[end + 4:]
+    return text.lstrip("\n")
+
+
+def note_file(rel):
+    """Resolve a note path, refusing anything outside the vault.
+
+    The app has no login -- it is private because Tailscale makes it private,
+    not because it checks. The path arrives from a URL, so
+    "../../mnt/data/session.json" is the obvious attack, and
+    resolve()-then-check is the only reliable defence: a string prefix test
+    misses symlinks. Nothing but .md is served either.
+    """
+    root = paths.VAULT.resolve()
+    try:
+        target = (root / rel).resolve()
+    except (OSError, ValueError):
+        raise HTTPException(404, "no such note")
+    if not target.is_relative_to(root) or target.suffix != ".md" \
+            or not target.is_file():
+        raise HTTPException(404, "no such note")
+    return target
+
+
+@app.get("/api/vault")
+def vault_index():
+    """Every note, flat. The page groups them however it likes."""
+    root = paths.VAULT
+    if not root.is_dir():
+        return {"built": False, "notes": []}
+
+    notes = []
+    dash = root / "Dashboards"
+    if dash.is_dir():
+        for extra in sorted(dash.glob("*.md")):
+            notes.append({"course": "", "courseName": "", "folder": "Dashboards",
+                          "title": extra.stem, "path": f"Dashboards/{extra.name}",
+                          "prepared": False, "isCourseNote": False, "order": -1})
+
+    courses = root / "Courses"
+    if courses.is_dir():
+        for cdir in sorted(d for d in courses.glob("*") if d.is_dir()):
+            code = cdir.name.split(" - ")[0]
+            for f in sorted(cdir.rglob("*.md")):
+                folder = f.parent.name if f.parent != cdir else ""
+                head = f.read_text(encoding="utf-8", errors="replace")[:400]
+                notes.append({
+                    "course": code,
+                    "courseName": cdir.name,
+                    "folder": folder,
+                    "title": f.stem.lstrip("_"),
+                    "path": f.relative_to(root).as_posix(),
+                    "prepared": "prepared:" in head,
+                    "isCourseNote": folder == "",
+                    "order": FOLDER_ORDER.get(folder, 9),
+                })
+    return {"built": True, "notes": notes}
+
+
+@app.get("/api/vault/note")
+def vault_note(path: str):
+    f = note_file(path)
+    body = strip_front(f.read_text(encoding="utf-8", errors="replace"))
+    try:
+        import markdown
+        html = markdown.markdown(
+            body, extensions=["tables", "fenced_code", "sane_lists"])
+    except ImportError:
+        # Readable without it, just unformatted. Better than a 500.
+        html = "<pre>" + body.replace("&", "&amp;").replace("<", "&lt;") + "</pre>"
+    return {"title": f.stem.lstrip("_"), "html": html, "path": path}
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

@@ -19,6 +19,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Deadlines">
 <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32" type="image/png">
+
+<!-- Maths in the prep notes. If this fails to load (no internet on the phone,
+     say) the raw TeX shows instead, which is still readable -- so it is not
+     worth blocking the page for. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 <style>
   :root {
     --bg: #f6f7f9;
@@ -196,6 +203,38 @@
   .actions .yes { background: var(--yes-bg); color: var(--yes); border-color: transparent; }
   .actions button:active { transform: scale(.92); }
 
+  /* The vault, read on a phone. Called .vnote, not .note: .note is
+     already the little evidence button on a card, and the wide layout
+     sets it to display:grid -- which turned a whole study document
+     into a narrow grid column with a button's border round the title. Deliberately plain -- this is a study
+     document, and anything decorative here is in the way. */
+  .vnote { background: var(--card); border: 1px solid var(--line);
+          border-radius: var(--radius); padding: 16px 15px; margin: 10px 12px; }
+  .vnote h1 { font-size: 19px; margin: 0 0 10px; }
+  .vnote h2 { font-size: 16px; margin: 20px 0 7px; }
+  .vnote h3 { font-size: 14px; margin: 16px 0 5px; color: var(--muted); }
+  .vnote p, .vnote li { font-size: 14px; line-height: 1.55; }
+  /* A five-column cue sheet does not fit a phone. Let the table scroll
+     inside the note rather than pushing the whole page sideways. */
+  .vnote table { border-collapse: collapse; font-size: 13px; margin: 10px 0;
+                 display: block; width: max-content; max-width: 100%;
+                 overflow-x: auto; }
+  .vnote th, .vnote td { border: 1px solid var(--line); padding: 5px 7px; text-align: left; }
+  .vnote th { background: var(--no-bg); }
+  .vnote code { background: var(--no-bg); padding: 1px 4px; border-radius: 4px; font-size: 12.5px; }
+  .vnote pre { background: var(--no-bg); padding: 10px; border-radius: 8px; overflow-x: auto; }
+  .vnote blockquote { margin: 10px 0; padding: 2px 0 2px 12px;
+                     border-left: 3px solid var(--line); color: var(--muted); }
+  /* Wide tables scroll rather than squeezing the page sideways. */
+  .vnote > * { max-width: 100%; }
+  .noteitem { display: block; width: 100%; text-align: left; background: var(--card);
+              border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px;
+              margin: 7px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  .noteitem .where { display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+  .noteitem .flag { color: var(--accent); font-size: 11.5px; }
+  .backbar { margin: 10px 12px 0; }
+  .backbar button { background: none; border: none; color: var(--accent);
+                    font: inherit; font-size: 14px; cursor: pointer; padding: 4px 0; }
   .empty { text-align: center; color: var(--muted); padding: 56px 20px; font-size: 14px; }
 
   .undo {
@@ -215,8 +254,12 @@
 <body>
 
 <header>
-  <h1>Deadlines</h1>
+  <h1 id="heading">Deadlines</h1>
   <div class="stats" id="stats">loading…</div>
+  <div class="tabs" id="modes">
+    <button aria-pressed="true"  onclick="setMode('cards')">Deadlines</button>
+    <button aria-pressed="false" onclick="setMode('notes')">Notes</button>
+  </div>
   <div class="tabs" id="tabs"></div>
 </header>
 
@@ -268,15 +311,84 @@ function renderFilters() {
   el.innerHTML = chips.map(([v, label]) =>
     `<button class="chip" data-course="${esc(v)}" aria-pressed="${course === v}"
        onclick="setCourse('${esc(v).replace(/'/g, "\\'")}')">${esc(label)}</button>`
-  ).join('') +
+  ).join('') + (MODE === 'notes' ? '' :
   `<button class="chip" aria-pressed="${sessions === 'all'}" onclick="toggleSessions()">
-     ${sessions === 'hide' ? 'Show labs &amp; tutorials' : 'Hide labs &amp; tutorials'}</button>`;
+     ${sessions === 'hide' ? 'Show labs &amp; tutorials' : 'Hide labs &amp; tutorials'}</button>`);
 }
 
 const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 
-function setCourse(c) { course = c; renderFilters(); render(); }
+function setCourse(c) {
+  course = c; renderFilters();
+  if (MODE === 'notes') renderNotes(); else render();
+}
 function toggleSessions() { sessions = sessions === 'hide' ? 'all' : 'hide'; load(); }
+
+// ------------------------------------------------------------------ notes
+
+let MODE = 'cards', NOTES = [], OPEN = null;
+
+function setMode(m) {
+  MODE = m; OPEN = null;
+  document.querySelectorAll('#modes button').forEach((b, i) =>
+    b.setAttribute('aria-pressed', (i === 0) === (m === 'cards')));
+  document.getElementById('heading').textContent = m === 'cards' ? 'Deadlines' : 'Notes';
+  document.getElementById('tabs').style.display = m === 'cards' ? '' : 'none';
+  if (m === 'notes') loadNotes(); else load();
+}
+
+async function loadNotes() {
+  const data = await api('/api/vault');
+  NOTES = data.notes || [];
+  COURSES = [...new Set(NOTES.map(n => n.course).filter(Boolean))]
+              .sort().map(c => ({ value: c, code: c, name: c }));
+  document.getElementById('stats').textContent =
+    data.built ? `${NOTES.length} notes in the vault`
+               : 'No vault yet — run vault.py on the Pi';
+  renderFilters();
+  renderNotes();
+}
+
+function renderNotes() {
+  const list = document.getElementById('list');
+  if (OPEN) {
+    list.innerHTML =
+      `<div class="backbar"><button onclick="closeNote()">&larr; All notes</button></div>
+       <article class="vnote">${OPEN.html}</article>`;
+    window.scrollTo(0, 0);
+    if (window.renderMathInElement) {
+      try {
+        renderMathInElement(list, { delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false }], throwOnError: false });
+      } catch (e) { /* raw TeX is still readable */ }
+    }
+    return;
+  }
+
+  const shown = NOTES.filter(n => course === 'all' || n.course === course);
+  if (!shown.length) {
+    list.innerHTML = `<div class="empty">No notes here yet.</div>`;
+    return;
+  }
+  // Course note first, then prepared work, then everything else.
+  shown.sort((a, b) => (a.order - b.order)
+    || a.course.localeCompare(b.course) || a.title.localeCompare(b.title));
+
+  list.innerHTML = shown.map(n => `
+    <button class="noteitem" onclick="openNote('${esc(n.path).replace(/'/g, "\\'")}')">
+      ${esc(n.title)}${n.prepared ? ' <span class="flag">· prepared</span>' : ''}
+      <span class="where">${esc(n.course || 'Dashboard')}${
+        n.folder ? ' · ' + esc(n.folder) : n.isCourseNote ? ' · course note' : ''}</span>
+    </button>`).join('');
+}
+
+async function openNote(path) {
+  OPEN = await api('/api/vault/note?path=' + encodeURIComponent(path));
+  renderNotes();
+}
+
+function closeNote() { OPEN = null; renderNotes(); }
 
 function bucket(card) {
   if (card.pending || card.days === null) return 'No date yet';

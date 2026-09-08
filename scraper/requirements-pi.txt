@@ -35,6 +35,9 @@ openpyxl==3.1.5
 # The web app.
 fastapi==0.115.12
 uvicorn==0.34.2
+# Renders the vault's notes so they can be read on the phone without
+# Obsidian. Pure Python, no build step -- which is the constraint here.
+markdown==3.7
 
 # Google Calendar.
 google-auth-oauthlib==1.2.1

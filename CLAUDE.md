@@ -129,7 +129,10 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `course_parts()` turns "MCG2360  A00  Engineering Materials I [ LEC ] 20269"
   into a code and a title, because nobody remembers the codes.
 - **web.py** + `static/index.html` — FastAPI and one HTML page, no build step
-  (it has to run on the Pi).
+  (it has to run on the Pi). Two views: the deadline cards, and a **Notes**
+  view that reads the vault, so a prep document can be read on the phone
+  without Obsidian. Markdown is rendered server-side; maths comes from KaTeX
+  on a CDN and degrades to raw TeX if that cannot load.
 - **gcal.py** — Google Calendar.
 - **paths.py** — where data lives. Unset, everything sits next to the code as
   it always has; `BRIGHTSPACE_DATA=/mnt/data` moves it all to the Pi's USB
