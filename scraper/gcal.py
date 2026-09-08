@@ -6,6 +6,8 @@ Puts accepted deadlines into your Google Calendar.
     python gcal.py --push       send everything already accepted
     python gcal.py --list       show what this app has put there
     python gcal.py --remove-all take it all back out again
+    python gcal.py --separate   move them to their own calendar you can hide
+    python gcal.py --primary    move them back to your main calendar
 
 Events go in your main calendar, tagged in their description so this app
 can always find its own again. Nothing else is ever touched.
@@ -22,9 +24,14 @@ HERE = Path(__file__).parent
 CLIENT_FILE = HERE / "google_client.json"      # downloaded from Google Cloud
 TOKEN_FILE = HERE / "google_token.json"        # written after you approve
 
-# Permission to manage events, not to read or reshape your calendars.
-SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
+# Manage events, and create/manage calendars this app made -- not blanket
+# access to every calendar in the account.
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.app.created",
+]
 CALENDAR = "primary"
+CALENDAR_NAME = "uOttawa deadlines"
 TIMEZONE = "America/Toronto"
 
 # Every event carries this so the app can find, update and remove exactly
@@ -68,6 +75,28 @@ def service(interactive=False):
         TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
 
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
+
+
+def target():
+    """Which calendar events go to. Defaults to your main one."""
+    return store.load_prefs().get("calendar_id") or CALENDAR
+
+
+def ensure_calendar(api):
+    """Find or create the app's own calendar. Returns its id.
+
+    A calendar of its own is what gives you a checkbox: one click hides
+    every deadline at once and leaves the rest of your week visible.
+    """
+    for entry in api.calendarList().list().execute().get("items", []):
+        if entry.get("summary") == CALENDAR_NAME:
+            return entry["id"]
+    created = api.calendars().insert(body={
+        "summary": CALENDAR_NAME,
+        "description": "Deadlines found in Brightspace. Safe to hide or delete.",
+        "timeZone": TIMEZONE,
+    }).execute()
+    return created["id"]
 
 
 def event_body(row):
@@ -114,7 +143,7 @@ def add(api, db, row):
         return None                                    # nothing to schedule yet
     try:
         created = api.events().insert(
-            calendarId=CALENDAR, body=event_body(row)).execute()
+            calendarId=target(), body=event_body(row)).execute()
     except Exception as e:
         print(f"  could not add {row['title'][:40]}: {e}")
         return None
@@ -125,7 +154,7 @@ def add(api, db, row):
 
 def remove(api, db, date_id, event_id):
     try:
-        api.events().delete(calendarId=CALENDAR, eventId=event_id).execute()
+        api.events().delete(calendarId=target(), eventId=event_id).execute()
     except Exception as e:
         if "410" not in str(e) and "404" not in str(e):
             print(f"  could not remove event: {e}")
@@ -154,14 +183,15 @@ def push(db, api=None):
     return added, None
 
 
-def mine(api):
+def mine(api, where=None):
     """Events this app created, from a year back to a year ahead."""
+    where = where or target()
     window_start = (date.today() - timedelta(days=365)).isoformat() + "T00:00:00Z"
     window_end = (date.today() + timedelta(days=365)).isoformat() + "T00:00:00Z"
     found, page = [], None
     while True:
         result = api.events().list(
-            calendarId=CALENDAR, timeMin=window_start, timeMax=window_end,
+            calendarId=where, timeMin=window_start, timeMax=window_end,
             q=MARKER, singleEvents=True, maxResults=250, pageToken=page).execute()
         for e in result.get("items", []):
             # q is a fuzzy search, so confirm the marker really is there.
@@ -189,9 +219,43 @@ def main():
         print("  Not authorised yet. Run:  python gcal.py --setup")
         return
 
+    if "--separate" in argv or "--primary" in argv:
+        prefs = store.load_prefs()
+        old_target = target()
+
+        if "--primary" in argv:
+            new_target, label = CALENDAR, "your main calendar"
+        else:
+            new_target, label = ensure_calendar(api), f'"{CALENDAR_NAME}"'
+
+        if new_target == old_target:
+            print(f"  Already using {label}.")
+            return
+
+        # Move rather than delete and recreate, so reminders, colours and
+        # anything you edited by hand survive the change.
+        moving = mine(api, old_target)
+        print(f"  Moving {len(moving)} event(s) to {label}...")
+        for e in moving:
+            try:
+                api.events().move(calendarId=old_target, eventId=e["id"],
+                                  destination=new_target).execute()
+            except Exception as err:
+                print(f"    could not move {e.get('summary','')[:40]}: {err}")
+
+        prefs["calendar_id"] = new_target
+        store.save_prefs(prefs)
+        print(f"  Done. New deadlines will go to {label}.")
+        if new_target != CALENDAR:
+            print("  In Google Calendar it appears under 'My calendars' --")
+            print("  untick it to hide every deadline at once.")
+        return
+
     if "--list" in argv:
         events = mine(api)
-        print(f"\n  {len(events)} event(s) put there by this app:\n")
+        where = target()
+        print(f"\n  {len(events)} event(s) on "
+              f"{'your main calendar' if where == CALENDAR else CALENDAR_NAME}:\n")
         for e in events:
             when = e["start"].get("dateTime") or e["start"].get("date")
             print(f"    {when[:16]}  {e.get('summary', '')[:52]}")
@@ -207,7 +271,7 @@ def main():
         print(f"  Removing {len(events)} event(s)...")
         for e in events:
             try:
-                api.events().delete(calendarId=CALENDAR, eventId=e["id"]).execute()
+                api.events().delete(calendarId=target(), eventId=e["id"]).execute()
             except Exception as err:
                 print(f"    failed: {err}")
         db = store.connect()
