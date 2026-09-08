@@ -166,9 +166,34 @@ def term_window(term):
     return None, None
 
 
+# Setup instructions rarely carry a date -- "create an account on WeBWorK"
+# has nothing date-shaped in it -- so a document full of them would be thrown
+# away by the date filter before anything read it.
+TASKISH = re.compile(
+    r"\b(create an account|make an account|set up an account|sign up|sign-up"
+    r"|regist(?:er|ration)|enrol|subscription|licen[cs]e"
+    r"|purchase|buy|textbook|course ?pack|lab manual"
+    r"|install|download|bring your own|you will need|you must have"
+    r"|mandatory|required to complete|before the first)",
+    re.I,
+)
+
+
 def looks_dated(text):
     """Cheap filter -- skip documents with no date-like language at all."""
     return len(DATEISH.findall(text)) >= 2
+
+
+def worth_reading(text):
+    """Dates are not the only thing worth an API call.
+
+    Two *distinct* task phrases rather than two matches: "required" appearing
+    nine times in a marking scheme is one idea repeated, not a document full
+    of instructions.
+    """
+    if looks_dated(text):
+        return True
+    return len({m.lower() for m in TASKISH.findall(text)}) >= 2
 
 
 def ask(client, model, course, doc, text, window=(None, None)):
@@ -275,7 +300,7 @@ def load_documents(all_docs):
             if not all_docs and not is_syllabus:
                 continue
             text = f.read_text(encoding="utf-8", errors="replace")
-            if not is_syllabus and not looks_dated(text):
+            if not is_syllabus and not worth_reading(text):
                 continue
             add(course, "file", f.stem, text)
 
