@@ -257,7 +257,10 @@ function renderTabs(s) {
 function setStatus(s) { status = s; course = 'all'; load(); }
 
 function renderFilters() {
-  const chips = [['all', 'All courses'], ...COURSES.map(c => [c, short(c)])];
+  // Chips carry the course's real name, not its code -- the code is on the
+  // card itself, and a filter you cannot read is not a filter.
+  const chips = [['all', 'All courses'],
+                 ...COURSES.map(c => [c.value, c.name || c.code])];
   const el = document.getElementById('filters');
   el.innerHTML = chips.map(([v, label]) =>
     `<button class="chip" data-course="${esc(v)}" aria-pressed="${course === v}"
@@ -267,7 +270,6 @@ function renderFilters() {
      ${sessions === 'hide' ? 'Show labs &amp; tutorials' : 'Hide labs &amp; tutorials'}</button>`;
 }
 
-const short = c => (c || '').split(/\s{2,}|\s-\s/)[0].trim().slice(0, 12) || c;
 const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 
 function setCourse(c) { course = c; renderFilters(); render(); }
@@ -319,6 +321,12 @@ function urgencyOf(c) {
 }
 
 function dateBlock(c) {
+  // A to-do has no date because none exists, which is different from a
+  // deadline whose date has not been announced yet. Say which.
+  if (c.kind === 'todo') {
+    return `<div class="date none"><span class="dnum">to do</span>
+      <span class="dsoon">no deadline</span></div>`;
+  }
   if (c.pending || !c.date) {
     return `<div class="date none"><span class="dnum">no date</span>
       <span class="dsoon">not set</span></div>`;
@@ -347,7 +355,7 @@ function cardHTML(c) {
       <h2 class="title">${esc(c.title)}</h2>
       <div class="tags">
         <span class="tag">${esc(c.kind)}</span>
-        <span class="tag">${esc(short(c.course))}</span>
+        <span class="tag">${esc(c.courseCode)}${c.courseName ? ' \u00b7 ' + esc(c.courseName) : ''}</span>
         ${c.onCalendar ? '<span class="tag oncal">in calendar</span>' : ''}
         ${unsure}
       </div>

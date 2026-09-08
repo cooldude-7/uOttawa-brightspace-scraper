@@ -57,11 +57,14 @@ def as_card(row):
             when = d.strftime("%a %-d %b") if sys.platform != "win32" else d.strftime("%a %d %b")
         except ValueError:
             when = due
+    parts = store.course_parts(row["course_name"])
     return {
         "id": row["id"],
         "title": row["title"],
         "course": row["course_name"],
-        "courseShort": (row["course_name"] or "")[:8].strip(),
+        "courseCode": parts["code"],
+        "courseName": parts["title"],
+        "courseShort": parts["code"],
         "kind": row["kind"] or "other",
         "confidence": row["confidence"] or "high",
         "date": due,
@@ -88,7 +91,13 @@ def get_cards(status: str = "new", sessions: str = "all", all_sections: bool = F
     elif sessions == "only":
         cards = [c for c in cards if c["kind"] == "session"]
 
-    courses = sorted({c["course"] for c in cards})
+    # The full name is the filter's identity, but nobody remembers whether
+    # MCG2360 is materials or thermodynamics -- so send the readable name too.
+    by_name = {}
+    for c in cards:
+        by_name.setdefault(c["course"], {
+            "value": c["course"], "code": c["courseCode"], "name": c["courseName"]})
+    courses = sorted(by_name.values(), key=lambda c: (c["code"], c["name"]))
     return {"cards": cards, "courses": courses}
 
 

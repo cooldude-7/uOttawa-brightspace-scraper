@@ -51,7 +51,8 @@ SCHEMA = {
                     "kind": {
                         "type": "string",
                         "enum": ["assignment", "midterm", "final_exam", "quiz",
-                                 "lab", "session", "reading", "presentation", "other"],
+                                 "lab", "session", "reading", "presentation",
+                                 "todo", "other"],
                     },
                     "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "source_excerpt": {"type": "string"},
@@ -111,6 +112,23 @@ Picking kind: "midterm" for a test during term, "final_exam" only for the end-of
 final, "quiz" for short in-class tests, "lab" for a lab report or lab submission, \
 "session" for something attended rather than handed in, "assignment" for anything \
 else submitted.
+
+A third thing that is wanted, and is not a date at all:
+
+- A SETUP OR ADMIN TASK the student has to do, where the document states no deadline \
+for it. Creating an account on a required website or online homework system, buying \
+or renting a specific textbook, installing named software, joining a Teams or Discord, \
+obtaining safety boots or a lab coat, bringing a specific calculator, completing a \
+mandatory orientation or safety module. Return these with kind "todo" and date "".
+
+  These are what a student skims past in week one and pays for in week three. Report \
+the action, not the topic: "Buy the iClicker subscription" is a task, "the course uses \
+iClicker" is not. The document must actually tell the student to do something -- if it \
+merely mentions a tool or a book in passing, that is not a task. As with dates, \
+source_excerpt must be the sentence instructing it.
+
+  If a setup task DOES have a stated deadline, it is not a "todo" -- give it that date \
+and the kind it deserves.
 
 - If the document genuinely contains nothing, return an empty list. That is a correct \
 and useful answer.
@@ -190,10 +208,13 @@ def ask(client, model, course, doc, text, window=(None, None)):
     for d in dates:
         when = (d.get("date") or "").strip()
 
-        # No date at all is not a failure -- it is a deliverable that has been
-        # named but not yet scheduled. Those are worth tracking separately.
+        # Two different undated things, and conflating them would mislead.
+        # A "todo" -- make an account, buy the textbook -- has no date because
+        # none exists, and can be done this evening. Anything else undated is a
+        # deliverable that has been named but not scheduled yet, and is waiting
+        # on the professor rather than on the student.
         if not when:
-            d["pending"] = True
+            d["pending"] = d.get("kind") != "todo"
             kept.append(d)
             continue
 

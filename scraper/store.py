@@ -27,6 +27,35 @@ DB_PATH = paths.DB
 PREFS_PATH = paths.PREFS
 
 
+# "MCG2130  A00  (2026 Fall) Thermodynamics I 20269"
+#  -> code MCG2130, section A00, title "Thermodynamics I"
+COURSE_NAME = re.compile(
+    r"^\s*(?P<code>[A-Z]{2,4}\s?\d{4})\s+(?P<section>[A-Z0-9]{2,4})\s+(?P<rest>.*)$")
+
+
+def course_parts(name):
+    """Split a Brightspace course name into something a person recognises.
+
+    The full name carries the code, the section, sometimes a bracketed
+    component and always the five-digit term stamp -- none of which help
+    someone who cannot remember whether MCG2360 is materials or thermo.
+    """
+    name = " ".join(str(name or "").split())
+    m = COURSE_NAME.match(name)
+    if not m:
+        return {"code": name[:8].strip(), "section": "", "title": name}
+
+    rest = m.group("rest")
+    rest = re.sub(r"\s*\b\d{5}\b\s*$", "", rest)        # trailing term stamp
+    rest = re.sub(r"\[[^\]]*\]", " ", rest)               # [ LEC ] / [ LAB ]
+    rest = re.sub(r"^\s*\(\s*\d{4}[^)]*\)\s*", "", rest)  # leading (2026 Fall)
+    rest = " ".join(rest.split())
+
+    return {"code": " ".join(m.group("code").split()),
+            "section": m.group("section"),
+            "title": rest or name}
+
+
 def load_prefs():
     """Your lab section and group, so other people's deadlines stay hidden."""
     if PREFS_PATH.exists():
@@ -452,7 +481,8 @@ def cards(db, status="new", mine_only=True):
                   c.code AS course_code
            FROM dates d JOIN courses c ON c.id = d.course_id
            WHERE d.status = ?
-           ORDER BY d.pending ASC, d.due_date ASC, d.due_time ASC""",
+           ORDER BY d.pending ASC, d.due_date IS NULL ASC,
+                    d.due_date ASC, d.due_time ASC""",
         (status,),
     ).fetchall()
 

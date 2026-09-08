@@ -66,7 +66,9 @@ def show(rows, course_filter=None, sessions="all"):
 
     shown = 0
     for course, items in by_course.items():
-        print(f"\n{course[:60]}")
+        parts = store.course_parts(course)
+        head = f"{parts['code']}  {parts['title']}" if parts["title"] else course
+        print(f"\n{head[:60]}")
         print("-" * 60)
         for r in items:
             label, soon = when(r)
@@ -89,7 +91,8 @@ def review(db):
     for i, r in enumerate(rows, 1):
         label, soon = when(r)
         print("=" * 64)
-        print(f"{i} of {len(rows)}   {r['course_name'][:48]}")
+        parts = store.course_parts(r["course_name"])
+        print(f"{i} of {len(rows)}   {parts['code']}  {parts['title'][:38]}")
         print(f"\n  {r['title']}")
         print(f"  {label}   {soon}   ({r['kind']}, {r['confidence']} confidence)")
         if r["source_excerpt"]:

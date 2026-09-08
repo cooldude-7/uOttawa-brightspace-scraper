@@ -80,6 +80,8 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 - **find_dates.py** — sends documents to Claude for dates written in prose.
   This is the product, not a fallback.
 - **store.py** — SQLite. Change detection, duplicate collapsing, decisions.
+  `course_parts()` turns "MCG2360  A00  Engineering Materials I [ LEC ] 20269"
+  into a code and a title, because nobody remembers the codes.
 - **web.py** + `static/index.html` — FastAPI and one HTML page, no build step
   (it has to run on the Pi).
 - **gcal.py** — Google Calendar.
