@@ -71,12 +71,30 @@
   .card {
     background: var(--card); border: 1px solid var(--line);
     border-radius: var(--radius); padding: 11px 12px; margin-bottom: 9px;
-    display: grid; grid-template-columns: auto 1fr auto;
-    gap: 11px; align-items: center;
+    display: grid; grid-template-columns: auto 1fr minmax(150px, 300px) auto;
+    gap: 13px; align-items: center;
     transition: opacity .18s, transform .18s;
   }
-  /* On a phone three buttons in the same row squeeze the title into four
-     lines, so below this width they drop to their own row instead. */
+
+  /* Wide enough to spare the room: the quote sits in its own column
+     instead of hiding behind a button, and the button is unnecessary. */
+  .quote {
+    font-size: 12.5px; line-height: 1.4; color: var(--muted); font-style: italic;
+    border-left: 3px solid var(--chip-ink, var(--line)); padding-left: 10px;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card .note { display: none; }
+
+  /* Below this the quote column will not fit, so it collapses behind the
+     note button and opens across the foot of the card. */
+  @media (max-width: 860px) {
+    .card { grid-template-columns: auto 1fr auto; }
+    .card .quote { display: none; }
+    .card .note { display: grid; }
+  }
+  /* On a phone three buttons in one row squeeze the title into four
+     lines, so they drop to their own row instead. */
   @media (max-width: 560px) {
     .card { grid-template-columns: auto 1fr; gap: 10px; }
     .card .actions { grid-column: 2; grid-row: 2; justify-self: end; }
@@ -284,6 +302,7 @@ function cardHTML(c) {
         ${unsure}
       </div>
     </div>
+    <div class="quote">${c.evidence ? '\u201c' + esc(c.evidence.slice(0, 200)) + '\u201d' : ''}</div>
     <div class="actions">
       ${c.evidence
         ? `<button class="note" aria-expanded="false" aria-label="Where this came from"
