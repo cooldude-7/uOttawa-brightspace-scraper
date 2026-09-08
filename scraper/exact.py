@@ -47,12 +47,16 @@ def entries(course):
     """Everything in one course that states a date outright."""
     out = []
 
+    # DisplayDue is the date Brightspace only shows on the page, filled in by
+    # pagedates.py. It is a dict rather than a UTC stamp, and load() below
+    # tells the two apart -- page dates are already Ottawa time.
     for a in course.get("assignments", []):
-        if a.get("DueDate"):
-            out.append((a.get("Name"), a["DueDate"], "assignment"))
+        when = a.get("DueDate") or a.get("DisplayDue")
+        if when:
+            out.append((a.get("Name"), when, "assignment"))
 
     for q in course.get("quizzes", []):
-        when = q.get("DueDate") or q.get("EndDate")
+        when = q.get("DueDate") or q.get("EndDate") or q.get("DisplayDue")
         if when:
             out.append((q.get("Name"), when, "quiz"))
 
@@ -90,7 +94,17 @@ def load(db, collected, window=(None, None)):
             db, course["id"], course["name"], course.get("term"))
 
         for title, stamp, kind in entries(course):
-            due, at = to_local(stamp)
+            if isinstance(stamp, dict):
+                # Straight off the page, and already in Ottawa time -- putting
+                # it through to_local() would shift it by five hours.
+                due, at = stamp.get("date"), stamp.get("time")
+                note = (f'Brightspace shows "{stamp.get("label")} ..." on the '
+                        f"{kind} list page. It is not in the API: this item is "
+                        "restricted to particular students, so its date is a "
+                        "special-access override.")
+            else:
+                due, at = to_local(stamp)
+                note = "Brightspace lists this due date on the item itself."
             if not due:
                 continue
 
@@ -107,7 +121,7 @@ def load(db, collected, window=(None, None)):
                 "time": at,
                 "kind": kind,
                 "confidence": "high",
-                "source_excerpt": "Brightspace lists this due date on the item itself.",
+                "source_excerpt": note,
             }])
 
     return added, dropped

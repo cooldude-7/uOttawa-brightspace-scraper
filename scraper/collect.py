@@ -23,6 +23,7 @@ from pathlib import Path
 
 import httpx
 
+import pagedates
 import paths
 
 BASE = "https://uottawa.brightspace.com"
@@ -390,6 +391,17 @@ def collect_course(client, course):
 
     quizzes_raw = get(client, f"/d2l/api/le/{LE}/{oid}/quizzes/") or {}
     quizzes = quizzes_raw.get("Objects", []) if isinstance(quizzes_raw, dict) else []
+    assignments = get(client, f"/d2l/api/le/{LE}/{oid}/dropbox/folders/") or []
+
+    # An item restricted to particular students keeps its dates in a
+    # special-access override the API will not serve a student role, so the
+    # only copy we can reach is the one on the rendered page. This fills those
+    # in and touches nothing that already has a date -- see pagedates.py.
+    filled = pagedates.attach(client, BASE, oid, quizzes, "quizzes")
+    filled += pagedates.attach(client, BASE, oid, assignments, "assignments")
+    if filled:
+        print(f"    {filled} date{'s' if filled != 1 else ''} found only on the "
+              f"page, not in the API")
 
     # The calendar endpoint needs an explicit window -- this is what the probe
     # was missing. Two months back for context, six ahead for deadlines.
@@ -408,7 +420,7 @@ def collect_course(client, course):
         "modules": modules,
         "topics": topics,
         "announcements": get(client, f"/d2l/api/le/{LE}/{oid}/news/") or [],
-        "assignments": get(client, f"/d2l/api/le/{LE}/{oid}/dropbox/folders/") or [],
+        "assignments": assignments,
         "quizzes": quizzes,
         "grades": get(client, f"/d2l/api/le/{LE}/{oid}/grades/") or [],
         "calendar": events if isinstance(events, list) else [],

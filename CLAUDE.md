@@ -93,6 +93,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   title-cleaning rule once deleted two of the user's lab deadlines. Merges
   mark rows rather than deleting them, `--restore` undoes them, and anything
   dropped is printed by name. Keep it that way.
+- **Some real deadlines are in no API field at all.** An item restricted to
+  particular students keeps its dates in a special-access override; `DueDate`
+  and `EndDate` come back `null` and the `specialaccess` endpoint answers 403
+  to a student. The date exists only on the rendered page. `pagedates.py`
+  parses it from there — the one place HTML parsing is used, and it only ever
+  fills a date that is missing, never overrides one the API gave. GNG1106's
+  LAB 1 was missing this way and nobody would have known. `probe_quiz.py`
+  is how it was tracked down, if it happens again elsewhere.
 - **Course shells are reused between terms.** Stale dates from previous
   offerings appear in folder text *and* in Brightspace's own due-date fields —
   one assignment still says June. Everything is filtered to the term window.

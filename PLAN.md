@@ -258,6 +258,16 @@ consistently. Real deadlines live scattered through course outlines, lecture sli
 announcement text, and assorted PDFs. That gap is the entire reason this app exists, and the
 design must treat prose as the primary source rather than the leftovers.
 
+**Revised 2026-09-08: the structured fields are not merely incomplete, they are sometimes
+empty on purpose.** A quiz or assignment restricted to particular students carries its dates
+in a per-user special-access override. The item returns `DueDate: null` and `EndDate: null`,
+and `/quizzes/{id}/specialaccess/` answers **403** to a student role — it exists, and it is
+closed to us. The date is only in the page Brightspace renders. This was found because the
+user noticed a lab quiz missing from their list, a week before it was due, with nothing in any
+log to suggest anything had gone wrong. `pagedates.py` reads those from the list page: the
+narrow HTML fallback §9 kept in reserve, restricted to filling dates that are otherwise
+absent, each one labelled on the card as having come from the page rather than the API.
+
 **Source 1 — structured fields.** `DueDate` on assignments and quizzes, `ModuleDueDate` on
 modules, plus calendar events. Free, exact, no API cost — take them, but expect them to cover
 only a fraction of the real deadlines. A floor, not a ceiling.
