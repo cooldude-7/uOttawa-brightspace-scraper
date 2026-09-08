@@ -36,11 +36,18 @@ On the Pi, run things through the virtual environment, not plain `python3`:
 `~/uOttawa-brightspace-scraper/.venv/bin/python`, with
 `BRIGHTSPACE_DATA=/mnt/data` set.
 
+**The phone works.** Tailscale joins the phone and the Pi to one private
+network, so the cards load from anywhere without exposing anything publicly —
+which matters because `web.py` has no authentication at all. The page carries a
+manifest and apple-touch icons, so it sits on the home screen and opens full
+screen like an app. iOS honours those over plain http, no certificate needed.
+
 Not built yet:
-- **Anything past the local network.** The travel router puts the Pi and the
-  phone on the same private network, so the card list works in the room without
-  a tunnel. cloudflared is still what gets it working from campus, and web push
-  needs the HTTPS it provides.
+- **Push notifications.** Nothing tells you a deadline appeared; you have to
+  open the app. Web push needs a secure context — worth testing whether
+  Tailscale's `*.ts.net` certificates satisfy that before buying a domain.
+- **A heartbeat.** Nothing tells you the Pi has stopped, either. This matters
+  more now that it is being trusted.
 - **The Obsidian vault.** Untouched since planning. All documents are already
   downloaded and text-extracted, so this is mostly foldering and frontmatter.
 

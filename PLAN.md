@@ -19,6 +19,7 @@ notifications on laptop and phone.
 | Vault scope | Everything, files text-extracted to markdown | Full-text searchable brain |
 | Cards | Check → Google Calendar, X → dismissed permanently | Predictable; nothing hits the real calendar unreviewed |
 | Notifications | PWA web push | One app on both devices, no extra install |
+| Remote access | Tailscale, **not** cloudflared (**revised 2026-09-08**) | The card list has no login. Private beats public. See §4 |
 
 ---
 
@@ -136,8 +137,18 @@ work; the Pi only ever runs `incremental_scrape`, which fetches small JSON diffs
 Pi. FastAPI serves the `dist/` folder. Service worker + web app manifest for PWA install.
 
 **Infra**
-- `cloudflared` (arm64) — free HTTPS + a stable hostname, no port forwarding, no dynamic DNS.
-  Web push *requires* HTTPS, so this is load-bearing, not a nicety.
+- ~~`cloudflared`~~ — **revised 2026-09-08: Tailscale instead.** Two things the original
+  reasoning missed. First, "free" was only true of the tunnel: a *stable* hostname needs a
+  domain in a Cloudflare account, around $10/year, and a quick tunnel's random address changes
+  on every restart, which is useless for something added to a home screen. Second and more
+  important, **the web app has no authentication of any kind.** A public address means anyone
+  who learns it can read the deadlines and tap accept or dismiss. Cloudflare Access would fix
+  that, but it is a second thing to configure correctly for a problem Tailscale does not have:
+  only devices signed into the same account can connect, and nothing is exposed publicly.
+  Free, no domain, and it makes the Pi reachable by SSH from anywhere as a side effect.
+  Open question for Phase 5: web push needs a secure context, and Tailscale can issue real
+  certificates for `*.ts.net` names, so a public tunnel may not be needed for that either.
+  Worth testing before paying for a domain.
 - `systemd` units for the app and the tunnel; `zram` enabled for swap headroom.
 - **SQLite, the vault, and the file archive all live on the 256 GB USB stick, not the
   microSD.** A database committing writes every 30 minutes for a year is exactly the workload

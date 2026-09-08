@@ -346,3 +346,71 @@ Not part of this setup, and not needed for it to be useful:
   instead of you noticing.
 - **A heartbeat** — something that tells you when no scrape has succeeded in
   three hours, rather than the app quietly going stale.
+
+---
+
+# Part 3 — Reaching it from anywhere
+
+Part 2 left the card list working on your own network. This gets it onto your
+phone wherever you are, and onto the home screen as an app.
+
+`PLAN.md` originally specified cloudflared here. It says Tailscale now, and §4
+records why — the short version is that the web app has no password, so a
+private network beats a public address.
+
+---
+
+## Step 10 — Tailscale on the Pi
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+`tailscale up` prints a login URL and waits. Open it in a browser, sign in, and
+note which account you used — the phone needs the same one.
+
+```bash
+tailscale ip -4
+```
+
+That address, starting `100.`, works from anywhere. There is usually a plain
+name too, so try `http://lucapi:8000` before resorting to digits.
+
+Tailscale starts itself on boot, so this is a one-time step.
+
+A useful side effect: SSH works from anywhere now, not just your own wifi.
+
+---
+
+## Step 11 — The phone
+
+Install **Tailscale** from the App Store or Play Store, sign in with the same
+account, and switch it on. iOS shows a VPN indicator while it runs; that is how
+the private network works and it does not route your ordinary browsing anywhere.
+
+Then open `http://100.x.y.z:8000` — **in Safari on iOS**, not Chrome. The
+home-screen behaviour comes from Apple-specific tags that only Safari reads.
+
+Share button → **Add to Home Screen**.
+
+You get a dark tile with a white check, named *Deadlines*, that opens full
+screen with no address bar.
+
+This needs no HTTPS. Safari honours those tags over plain `http`, which is why
+it works without a tunnel or a certificate.
+
+**Test it properly:** turn wifi off, leave cell data on, and tap the icon. If
+the cards load, it works from campus.
+
+---
+
+## What is still missing
+
+- **Push notifications.** Nothing tells you a new deadline appeared — you have
+  to open the app and look. Web push needs a secure context; Tailscale can issue
+  real certificates for `*.ts.net` names, so test that before buying a domain
+  for cloudflared.
+- **A heartbeat.** Nothing tells you the Pi has stopped scraping either, which
+  matters more the more you rely on it. Until it exists, `journalctl -u
+  brightspace-update -n 20` is the manual version.
