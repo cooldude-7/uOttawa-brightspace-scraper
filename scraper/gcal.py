@@ -226,6 +226,20 @@ def mine(api, where=None):
 def main():
     argv = sys.argv[1:]
 
+    if "--scopes" in argv:
+        if not TOKEN_FILE.exists():
+            print("  No token yet. Run: python gcal.py --setup")
+            return
+        granted = json.loads(TOKEN_FILE.read_text(encoding="utf-8")).get("scopes", [])
+        print("\n  Google granted this app:")
+        for sc in granted:
+            print(f"    {sc}")
+        print("\n  Needed:")
+        for sc in SCOPES:
+            mark = "yes" if sc in granted else "NO  <-- missing"
+            print(f"    {mark:<16} {sc}")
+        return
+
     if "--setup" in argv:
         api = service(interactive=True, force="--force" in argv)
         if api is None:
