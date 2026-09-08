@@ -189,27 +189,46 @@ scp -r C:\path\to\uOttawa-brightspace-scraper yourusername@raspberrypi.local:~/
 
 ---
 
-## Step 7 — Hand over the two files that cannot travel through git
+## Step 7 — Hand over what cannot travel through git
 
-The Pi needs your API key and a logged-in Brightspace session. Both are
-deliberately gitignored, so they have to be copied by hand — **once**, and
-from the laptop, because logging in needs a browser and the Pi has none.
+Everything secret or changing is gitignored, so it has to be copied by hand —
+once. Do it from the laptop: logging in needs a browser, and the Pi has none.
 
-Run this from Windows PowerShell, in the project folder:
-
-```powershell
-scp scraper\api_key.txt  yourusername@raspberrypi.local:/mnt/data/
-scp scraper\session.json yourusername@raspberrypi.local:/mnt/data/
-```
-
-If you also have Google Calendar working on the laptop, bring those too, plus
-your lab section:
+Stop `web.py` on the laptop first, so nothing has the database open. Then, in
+Windows PowerShell, from the `scraper` folder:
 
 ```powershell
-scp scraper\google_client.json yourusername@raspberrypi.local:/mnt/data/
-scp scraper\google_token.json  yourusername@raspberrypi.local:/mnt/data/
-scp scraper\me.json            yourusername@raspberrypi.local:/mnt/data/
+scp api_key.txt session.json me.json yourusername@raspberrypi.local:/mnt/data/
+scp brightspace.db yourusername@raspberrypi.local:/mnt/data/
 ```
+
+**Bring the database.** It is tempting to let the Pi start clean, and it is the
+wrong call. `brightspace.db` holds every accept and dismiss you have made, the
+ids of the calendar events already created, and the record of which documents
+have been read. Starting empty means every deadline you dismissed comes back,
+and every document is sent to the API again — the whole initial extraction
+cost, paid twice, for nothing.
+
+`me.json` carries your lab section. Without it the Pi shows you all five
+sections' deadlines rather than your own.
+
+If you have Google Calendar working on the laptop:
+
+```powershell
+scp google_client.json google_token.json yourusername@raspberrypi.local:/mnt/data/
+```
+
+Then the two folders, which spare the Pi re-downloading every document from
+Brightspace — `download.py` skips any file it already has:
+
+```powershell
+scp -r extracted   yourusername@raspberrypi.local:/mnt/data/
+scp -r _originals  yourusername@raspberrypi.local:/mnt/data/
+```
+
+`extracted` is small. `_originals` is a semester of slide decks and may be a
+gigabyte or more, so leave it running. It is the least important of these —
+without it the Pi simply fetches the files again on its first run.
 
 Note they go to `/mnt/data/`, not into the code folder. Everything that is
 either secret or changing lives on the stick; the code folder holds only code.
