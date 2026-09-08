@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111827">
 <title>Deadlines</title>
+
+<!-- Home screen. On iOS these four are what turn "add to home screen" from a
+     bookmark into something that opens full screen with its own icon; Safari
+     reads them over plain http, so no tunnel is needed for this part.
+     The status bar stays "default" rather than translucent on purpose: the
+     header is sticky at top:0 and the page has no safe-area-inset-top, so a
+     translucent bar would put the clock over the course filters. -->
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Deadlines">
+<link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32" type="image/png">
 <style>
   :root {
     --bg: #f6f7f9;

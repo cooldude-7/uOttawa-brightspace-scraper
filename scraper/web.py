@@ -8,6 +8,7 @@ Then open http://localhost:8000 -- or, from your phone on the same wifi,
 http://<your-laptop-ip>:8000 (the address is printed on startup).
 """
 
+import mimetypes
 import socket
 import sys
 from datetime import date, datetime
@@ -23,6 +24,11 @@ import store
 
 HERE = Path(__file__).parent
 STATIC = HERE / "static"
+
+# Not in every system's mime table, and served as the wrong type the manifest
+# is ignored -- which on the phone means the icon and the full-screen launch
+# quietly do not happen.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 app = FastAPI(title="Brightspace deadlines")
 
