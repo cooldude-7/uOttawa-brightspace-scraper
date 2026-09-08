@@ -39,7 +39,7 @@ TIMEZONE = "America/Toronto"
 MARKER = "[brightspace-scraper]"
 
 
-def service(interactive=False):
+def service(interactive=False, force=False):
     """An authorised Calendar client, or None with an explanation printed."""
     try:
         from google.auth.transport.requests import Request
@@ -52,11 +52,19 @@ def service(interactive=False):
         return None
 
     creds = None
-    if TOKEN_FILE.exists():
+    if TOKEN_FILE.exists() and not force:
         try:
             creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
         except Exception:
             creds = None
+
+    # A token issued before a scope was added stays perfectly valid, so
+    # "still valid" is not the same as "allowed to do what we now need".
+    # Without this check, re-running setup silently changes nothing and the
+    # failure only shows up later as a 403.
+    if creds and not creds.has_scopes(SCOPES):
+        print("  New permission needed -- asking Google again.")
+        creds = None
 
     if creds and creds.expired and creds.refresh_token:
         try:
@@ -87,15 +95,27 @@ def ensure_calendar(api):
 
     A calendar of its own is what gives you a checkbox: one click hides
     every deadline at once and leaves the rest of your week visible.
+
+    The id is remembered rather than looked up by name -- listing every
+    calendar in the account needs far broader permission than this app
+    should hold, and remembering it also survives a rename.
     """
-    for entry in api.calendarList().list().execute().get("items", []):
-        if entry.get("summary") == CALENDAR_NAME:
-            return entry["id"]
+    prefs = store.load_prefs()
+    known = prefs.get("app_calendar_id")
+    if known:
+        try:
+            api.calendars().get(calendarId=known).execute()
+            return known
+        except Exception:
+            pass                                  # deleted; make a new one
+
     created = api.calendars().insert(body={
         "summary": CALENDAR_NAME,
         "description": "Deadlines found in Brightspace. Safe to hide or delete.",
         "timeZone": TIMEZONE,
     }).execute()
+    prefs["app_calendar_id"] = created["id"]
+    store.save_prefs(prefs)
     return created["id"]
 
 
@@ -207,7 +227,7 @@ def main():
     argv = sys.argv[1:]
 
     if "--setup" in argv:
-        api = service(interactive=True)
+        api = service(interactive=True, force="--force" in argv)
         if api is None:
             return
         TOKEN_FILE.exists() and print(f"\n  Authorised. Token saved to {TOKEN_FILE.name}")
