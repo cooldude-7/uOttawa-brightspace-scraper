@@ -74,6 +74,8 @@ python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
 python vault.py            build the Obsidian vault (no API cost)
+python prep.py --list      work waiting to be prepared, with ids
+python prep.py 412         run the right skill against one item
 ```
 
 `update.py` chains `collect.py` → `exact.py` → `download.py` → `find_dates.py`
@@ -103,6 +105,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   announcement as its own note. Deterministic and free — it only reshapes what
   is already in the database. `skills.py` seeds the editable markdown in
   `Skills/` once and never touches it again.
+- **prep.py** — runs a skill against one real item and writes the result into
+  its note in `Work/`. How far it goes is decided by
+  `Skills/course-policies.md`, not by code: GNG2101's professor permits AI
+  through a lab report except the measured results and graphs, and requires it
+  declared; other courses are unconfirmed and default to prepare-not-draft.
+  Every run appends to `AI use log.md` and `ai-use-log.csv`, because GNG2101
+  submits an AI log and an attestation. A prepared note loses its
+  `generated: true` marker, so it belongs to the user from then on.
 - **store.py** — SQLite. Change detection, duplicate collapsing, decisions.
   `course_parts()` turns "MCG2360  A00  Engineering Materials I [ LEC ] 20269"
   into a code and a title, because nobody remembers the codes.
@@ -134,6 +144,13 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   for lab sections A1–A5. The section marker is part of an event's identity,
   or A2 and A5 collapse into one. The user is **A4**, established by matching
   their personal due date against the text, stored in `me.json`.
+- **What the app may write is the user's professor's call, not ours.**
+  `Skills/course-policies.md` holds it per course, in plain English the user
+  edits. A course not listed there defaults to prepare-not-draft. One rule sits
+  above the policy file and is not negotiable because it protects the user:
+  measured data, results and graphs are never generated — not a reading, not a
+  trend, not a plausible number in a table. A fabricated measurement does not
+  stay in a draft, it gets submitted.
 - **The vault must never eat the user's writing.** A generated note carries
   `generated: true`; `vault.py` refuses to overwrite any file without it, so
   deleting that line claims a note permanently. `Notes/` is never generated at

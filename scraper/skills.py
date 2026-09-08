@@ -41,7 +41,8 @@ How to set up an assignment before I work on it.
 
 ## Rules
 
-- Do not write the submission. Set it up so I can.
+- Follow `course-policies.md` for this course. It decides how far to go --
+  whether to set the work up or to draft it.
 - Where the requirements are ambiguous, say so rather than picking one.
 - Quote the source for anything about marks or deadlines.
 """,
@@ -73,6 +74,13 @@ How to get me ready for a lab session.
 
 ## Rules
 
+- Follow `course-policies.md` for this course. Where a course allows AI through
+  the report, draft it -- but the results, the measured data and the graphs
+  drawn from them are mine, always, in every course. Leave those as clearly
+  marked gaps for me to fill.
+- Never invent a measurement, a reading, a trend or an error value. A blank
+  waiting for real data is useful; a plausible number is a fabrication that
+  ends up in a submission.
 - Pre-lab items are the priority. Turning up unprepared usually costs marks
   before the lab has even started.
 - If the lab report format is known, sketch it now.
@@ -145,6 +153,55 @@ Where it conflicts with the conventional advice, the profile wins.
   understand is still a lecture I do not understand.
 - Break work into pieces that can be finished in one sitting.
 - Never present something as certain when the material is unclear.
+""",
+
+"course-policies.md": """---
+skill: policies
+---
+
+# What each course allows
+
+Every prep run reads this and follows the rule for that course. Professors
+differ, and one of them changing their mind mid-term is not something anyone
+should have to edit code for.
+
+Write it however you like. Plain sentences are fine.
+
+## GNG2101
+
+AI permitted throughout the lab report EXCEPT the results and graphs actually
+measured in person -- those must be mine, from the real data. Use must be
+declared; there is an AI log and an attestation to submit.
+
+## MCG2360
+
+_Not confirmed yet. Until it says otherwise, treat this as: help me prepare,
+understand and check my own work, but do not draft what I submit._
+
+## MCG2130
+
+_Not confirmed yet -- as above._
+
+## MAT1341
+
+_Not confirmed yet -- as above._
+
+## GNG1106
+
+_Not confirmed yet -- as above._
+
+## The rule when a course is not listed
+
+Prepare, explain, structure and check. Do not draft the submission. An unlisted
+course is an unknown policy, and guessing generously is the wrong way to be
+wrong.
+
+## Always
+
+- Real measured data, real results and real graphs are mine. Never invent a
+  number, a reading or a trend, and never fill a gap in my data.
+- Anything drafted gets logged to `AI use log.md`, so the declaration is
+  already written when it is asked for.
 """,
 
 "README.md": """---
