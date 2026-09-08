@@ -75,8 +75,9 @@ Link a task to the dated item it must be done BEFORE, so it surfaces when it \
 matters instead of on day one.
 
 Rules:
-- Choose anchors ONLY from the dated items listed. Copy the title and date \
-exactly as given. Never invent an item or a date.
+- Choose anchors ONLY from the dated items listed. Copy "title" exactly, and put \
+that item's "date" field in anchor_date as YYYY-MM-DD with no time. Never invent \
+an item or a date.
 - Link only where there is a real dependency. "Install the Arduino IDE" belongs \
 before the Arduino lab. "Create a Tinkercad account" belongs before the circuits \
 lab. "Evaluate the lab assistants" and "return prototypes" belong at the END of \
@@ -94,7 +95,7 @@ task.
 TASKS (id, title, and the sentence it came from):
 {tasks}
 
-DATED ITEMS (title, date, kind):
+DATED ITEMS -- these are the only anchors you may choose from:
 {anchors}
 """
 
@@ -126,13 +127,14 @@ def ask(client, course_name, tasks, anchor_rows, today):
         f"{' '.join((t['source_excerpt'] or '')[:200].split())}"
         for t in tasks)
     anchor_lines = "\n".join(
-        f"  {a['title']} | {a['due_date']}"
-        f"{' ' + a['due_time'] if a['due_time'] else ''} | {a['kind'] or 'other'}"
+        f"  title: {a['title']}  |  date: {a['due_date']}  |  "
+        f"time: {a['due_time'] or '-'}  |  kind: {a['kind'] or 'other'}"
         for a in anchor_rows)
 
     r = client.messages.create(
         model=MODEL,
-        max_tokens=4000,
+        # 4000 truncated GNG2101 mid-JSON: fifteen tasks is a lot of links.
+        max_tokens=16000,
         output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
         messages=[{"role": "user", "content": PROMPT.format(
             course=course_name, today=today,
@@ -180,13 +182,33 @@ def main(argv=None):
 
         # Only anchors that were actually offered. A title or date the model
         # produced from nowhere is exactly the failure this project refuses.
+        #
+        # Strict about whether the anchor exists, forgiving about how it was
+        # written back. The first version compared the returned date against
+        # due_date alone and rejected "2026-10-02 11:30" -- a real midterm,
+        # written exactly the way the prompt had presented it. Rejecting a true
+        # anchor is the same class of harm as accepting a false one.
         allowed = {(a["title"], a["due_date"]): a for a in anchor_rows}
+        by_title = {}
+        for a in anchor_rows:
+            by_title.setdefault(a["title"], []).append(a)
+
+        def resolve(title, raw_date):
+            day = (raw_date or "")[:10]                      # drop any time
+            hit = allowed.get((title, day))
+            if hit is not None:
+                return hit
+            # Same title, one date only: the date was mangled, not invented.
+            same = by_title.get(title)
+            if same and len(same) == 1:
+                return same[0]
+            return None
         by_id = {t["id"]: t for t in tasks}
         got = set()
 
         for link in links:
             task = by_id.get(link.get("task_id"))
-            anchor = allowed.get((link.get("anchor_title"), link.get("anchor_date")))
+            anchor = resolve(link.get("anchor_title"), link.get("anchor_date"))
             if task is None:
                 continue
             if anchor is None:
