@@ -11,7 +11,19 @@
 httpx==0.28.1
 
 # Reading documents for dates.
-anthropic==0.69.0
+#
+# The floor is not cosmetic. Structured outputs move through
+# output_config={"format": ...}, which does not exist before 0.110 -- pinned at
+# 0.69.0 every call failed with "unexpected keyword argument 'output_config'",
+# on a Pi that had otherwise installed perfectly. Nothing was read and nothing
+# was charged, which is the good version of this bug; the bad version is a pin
+# that is merely old enough to behave differently.
+#
+# Held below 1.0 deliberately. The 1.x line moves to the separate httpx2
+# package and needs Python 3.10+, and collect.py talks to Brightspace through
+# httpx directly -- worth doing on the laptop where it can be tested, not
+# discovered on a machine reachable only over ssh.
+anthropic>=0.110,<1
 
 # Pulling text out of files. All three ship prebuilt arm64 wheels, which is
 # why the SD card was imaged 64-bit -- on 32-bit these compile from source.
