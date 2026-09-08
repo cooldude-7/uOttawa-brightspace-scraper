@@ -18,6 +18,7 @@ import collect
 import download
 import exact
 import find_dates
+import link_tasks
 import store
 
 
@@ -69,6 +70,19 @@ def main():
         if not quiet:
             print("\n-- reading for deadlines " + "-" * 35)
         find_dates.main(["--all", "--model=sonnet"])
+
+        # Tasks arrive undated, because the document that says to install the
+        # Arduino IDE does not know when the Arduino lab is. This is the pass
+        # that does know -- it sees the whole course at once. Only tasks not
+        # yet linked cost anything, so a routine run does no work here.
+        if not quiet:
+            print("\n-- placing tasks in the term " + "-" * 31)
+        try:
+            link_tasks.main([])
+        except Exception as e:
+            # Never let this sink a scrape. Deadlines are the product; timing
+            # a to-do is a convenience on top of them.
+            print(f"  could not link tasks: {e}")
 
     db = store.connect()
     after = store.summary(db)

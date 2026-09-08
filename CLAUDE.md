@@ -62,9 +62,11 @@ python cards.py            same list in the terminal; --review walks it
 python gcal.py --check     reconcile calendar against stored decisions
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
+python link_tasks.py       give undated to-dos a place in the term
 ```
 
-`update.py` chains `collect.py` → `exact.py` → `download.py` → `find_dates.py`.
+`update.py` chains `collect.py` → `exact.py` → `download.py` → `find_dates.py`
+→ `link_tasks.py`.
 
 On the Pi the same commands run, but under systemd rather than by hand — see
 `docs/pi-setup.md` Part 2.
@@ -79,6 +81,12 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 - **download.py** — fetches files, extracts text from PDF/PPTX/DOCX/XLSX.
 - **find_dates.py** — sends documents to Claude for dates written in prose.
   This is the product, not a fallback.
+- **link_tasks.py** — the second pass over what was read. `find_dates.py` sees
+  one document at a time, so a task like "install the Arduino IDE" comes back
+  undated: that document has no idea when the Arduino lab is. This one sees the
+  whole course at once and ties each task to the dated thing it must precede.
+  It may only pick from anchors it was given — an invented one is discarded and
+  printed — and a task with no real anchor stays undated on purpose.
 - **store.py** — SQLite. Change detection, duplicate collapsing, decisions.
   `course_parts()` turns "MCG2360  A00  Engineering Materials I [ LEC ] 20269"
   into a code and a title, because nobody remembers the codes.
@@ -110,6 +118,9 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   for lab sections A1–A5. The section marker is part of an event's identity,
   or A2 and A5 collapse into one. The user is **A4**, established by matching
   their personal due date against the text, stored in `me.json`.
+- **A linked date is inferred, not stated.** `linked_to` being set is what
+  says so, and the card shows "before Lab 5" in a different colour for exactly
+  that reason. Never let a linked date render as though a document published it.
 - **Recall over precision, but never invention.** Haiku 4.5 fabricated a
   whole semester of dates from "8 weekly assignments will be given"; Sonnet 5
   correctly returned nothing. Use **Sonnet 5**. Every date must carry the

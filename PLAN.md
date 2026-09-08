@@ -331,6 +331,36 @@ click to dismiss) than to miss a real one. Tune the prompt to over-report.
 
 </details>
 
+### Tasks, and why they need a second pass (added 2026-09-08)
+
+Not everything a course requires is a deadline. A syllabus says to create an
+account on the homework system; a lab handout says to install the Arduino IDE and
+download a phone app; the last lab says to return prototypes and evaluate the TAs.
+These are real obligations with real consequences for missing them, and the
+extractor could not represent them at all — it was asked for dates, so it returned
+nothing. They are now a `todo` kind.
+
+Finding them is the easy half. **Timing them is the point.** A to-do with no date
+is noise: it either nags in week one about something owed in December, or sits at
+the bottom of the list until the lab it was needed for has happened. And the
+document that states the task cannot supply the timing — reading a slide deck
+about Arduino, the model has no way to know Lab 5 is on 11 October.
+
+So `link_tasks.py` is a second pass with the one thing the first pass structurally
+could not have: **the whole course at once.** Every undated task and every dated
+item in a single request, asked which task must come before which thing. "Install
+the Arduino IDE" anchors to the Arduino lab; "evaluate the lab assistants" anchors
+to the last one.
+
+It runs under the same anti-invention rule as everything else, because the failure
+mode is identical. The model may only choose anchors from the list it was handed;
+one it produces from nowhere is discarded and printed by name. And a task with no
+genuine anchor — an optional club, a general policy — stays undated rather than
+being stretched to fit. Returning fewer links is the correct answer.
+
+A linked date is **inferred, never stated**, and is stored with `linked_to` set so
+that every surface can say so.
+
 ### Dates that do not exist yet
 
 The Thermodynamics syllabus says the midterm dates *"will be decided in class"* and that

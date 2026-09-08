@@ -74,6 +74,10 @@ def as_card(row):
         "pending": bool(row["pending"]),
         "onCalendar": bool(row["gcal_event_id"]),
         "evidence": " ".join((row["source_excerpt"] or "").split()),
+        # Set when this date was inferred by tying an undated task to
+        # something dated, rather than read from a document.
+        "linkedTo": row["linked_to"] if "linked_to" in row.keys() else None,
+        "linkedWhy": row["linked_why"] if "linked_why" in row.keys() else None,
     }
 
 

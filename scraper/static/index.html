@@ -167,6 +167,9 @@
     background: var(--no-bg); color: var(--muted);
   }
   .tag.unsure { color: var(--soon); }
+  /* An inferred date -- tied to something dated, not stated by any
+     document -- so it should not look like a published deadline. */
+  .tag.linked { color: var(--accent); }
 
   .actions .note { margin-right: 6px; }
   .note {
@@ -322,8 +325,9 @@ function urgencyOf(c) {
 
 function dateBlock(c) {
   // A to-do has no date because none exists, which is different from a
-  // deadline whose date has not been announced yet. Say which.
-  if (c.kind === 'todo') {
+  // deadline whose date has not been announced yet. Say which. A to-do that
+  // has been linked to something dated falls through to the normal block.
+  if (c.kind === 'todo' && !c.date) {
     return `<div class="date none"><span class="dnum">to do</span>
       <span class="dsoon">no deadline</span></div>`;
   }
@@ -356,6 +360,7 @@ function cardHTML(c) {
       <div class="tags">
         <span class="tag">${esc(c.kind)}</span>
         <span class="tag">${esc(c.courseCode)}${c.courseName ? ' \u00b7 ' + esc(c.courseName) : ''}</span>
+        ${c.linkedTo ? `<span class="tag linked">before ${esc(c.linkedTo)}</span>` : ''}
         ${c.onCalendar ? '<span class="tag oncal">in calendar</span>' : ''}
         ${unsure}
       </div>

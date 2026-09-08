@@ -187,6 +187,14 @@ def migrate(db):
     columns = {row[1] for row in db.execute("PRAGMA table_info(dates)")}
     if "resolved_title" not in columns:
         db.execute("ALTER TABLE dates ADD COLUMN resolved_title TEXT")
+    # A task with no date of its own, tied to something that has one: "install
+    # the Arduino IDE" belongs before Lab 5, not in week one. linked_to names
+    # what it must precede, and the due_date is that thing's date -- inferred,
+    # never stated, so it is labelled as such wherever it is shown.
+    if "linked_to" not in columns:
+        db.execute("ALTER TABLE dates ADD COLUMN linked_to TEXT")
+    if "linked_why" not in columns:
+        db.execute("ALTER TABLE dates ADD COLUMN linked_why TEXT")
     missing = db.execute(
         "SELECT id, title FROM dates WHERE resolved_title IS NULL").fetchall()
     for row in missing:
