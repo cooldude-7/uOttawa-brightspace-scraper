@@ -389,11 +389,22 @@ VAPID push, install-to-home-screen. Deliverable: notifications on your phone.
 **Phase 6 — Google Calendar.** OAuth (scope `calendar.events`), a dedicated "uOttawa"
 calendar so nothing pollutes your personal one, accept → insert, X → dismiss.
 
-**Phase 7 — Deploy. Partly done (2026-09-08).** Storage layout, the `BRIGHTSPACE_DATA` split,
-systemd units for the web app and a 30-minute timer, and `deploy/install.sh` to put them in
-place: written and tested, see `docs/pi-setup.md`. Logs come from journald, so log rotation
-needs nothing. Still outstanding: cloudflared, zram, and the heartbeat that pushes you a
-notification if a scrape has not succeeded in 3 hours.
+**Phase 7 — Deploy. Done on real hardware (2026-09-08),** apart from the tunnel and the
+heartbeat. The stick is ext4 at `/mnt/data`, the code runs from the SD card, and the split is
+enforced by a marker file rather than trust. `brightspace-web` serves the cards and
+`brightspace-update.timer` scrapes every 30 minutes. First run: 204s, $0.0000, all documents
+recognised as already read; Google Calendar reconciled with 35 of 35 matching. zram turned out
+to be enabled by Raspberry Pi OS already, and journald means log rotation needs nothing.
+
+Two corrections the hardware forced, both wrong in the first draft. `Persistent=true` does
+nothing on a monotonic timer — it only applies to `OnCalendar=` — so the promised catch-up
+after downtime would not have happened. And Python buffers stdout when it is not writing to a
+terminal, so a three-minute scrape logged nothing at all until it exited; `PYTHONUNBUFFERED=1`
+fixes that.
+
+Still outstanding: cloudflared, and the heartbeat that pushes a notification if a scrape has
+not succeeded in 3 hours. The heartbeat matters more now than when it was written — nothing
+currently tells you the Pi has stopped.
 
 ---
 

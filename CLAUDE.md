@@ -16,14 +16,31 @@ plain language; avoid jargon or define it in one line. They run everything on
 Working end to end on the laptop: login → scrape → download → read → store →
 web app → calendar. About $1.40 of API spend so far.
 
-**The Pi** is prepared but not yet run on real hardware. Everything it needs
-exists and has been tested where it could be: `paths.py`, `requirements-pi.txt`,
-systemd units in `deploy/`, and `docs/pi-setup.md` end to end. What is untested
-is the Pi itself — nobody has executed a step of it on the actual machine.
+**The Pi is running** (2026-09-08). A 3B+ wired to a TP-Link travel router,
+256 GB stick formatted ext4 and mounted at `/mnt/data`, scraping every 30
+minutes under a systemd timer. `docs/pi-setup.md` was followed end to end on
+the real hardware and corrected where it was wrong.
+
+The laptop's database was copied across rather than starting clean, so the
+decisions and the $1.38 already spent came with it. First scrape on the Pi:
+204s, **$0.0000** — all 63 documents recognised as already read, which is
+`text_hash` doing exactly what it was built for. Google Calendar reconciles
+from the Pi with all 35 events matching.
+
+**Not proven yet: overnight session renewal.** The Brightspace session dies in
+under 24 hours; the Pi is supposed to replay the sign-on chain and renew itself
+without anyone tapping a phone. The session file was regenerated in the new
+per-domain format for exactly this, but the real test is the first morning.
+
+On the Pi, run things through the virtual environment, not plain `python3`:
+`~/uOttawa-brightspace-scraper/.venv/bin/python`, with
+`BRIGHTSPACE_DATA=/mnt/data` set.
 
 Not built yet:
-- **Anything past the local network.** cloudflared for HTTPS, then PWA push
-  notifications, then a heartbeat for when a scrape stops succeeding.
+- **Anything past the local network.** The travel router puts the Pi and the
+  phone on the same private network, so the card list works in the room without
+  a tunnel. cloudflared is still what gets it working from campus, and web push
+  needs the HTTPS it provides.
 - **The Obsidian vault.** Untouched since planning. All documents are already
   downloaded and text-extracted, so this is mostly foldering and frontmatter.
 
@@ -91,6 +108,11 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   top breaks the Pi entirely.
 - **Windows has no timezone database.** `zoneinfo` fails; the Ottawa offset is
   computed directly in `exact.py`.
+- **An old `session.json` cannot renew itself.** Files from before the 2026-09-08
+  revision hold only the four Brightspace cookies — about 190 bytes — and the
+  Pi will scrape once and then be stuck at the next expiry. One carrying the
+  sign-on cookies is around 7 KB across several domains. Check the size before
+  trusting it; the fix is to move it aside and log in again.
 - **Secrets stay out of git**: `api_key.txt`, `google_client.json`,
   `google_token.json`, `session.json`. The session file now holds sign-on
   cookies — a bearer token for the whole uOttawa account. Treat it seriously,
