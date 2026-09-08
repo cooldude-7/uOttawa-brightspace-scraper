@@ -16,6 +16,7 @@ from datetime import datetime
 
 import collect
 import download
+import exact
 import find_dates
 import store
 
@@ -39,6 +40,22 @@ def main():
     if not quiet:
         print("-- courses and tabs " + "-" * 40)
     collect.main(client=client)
+
+    # Dates Brightspace states outright, before anything is read: cheap,
+    # exact, and previously falling through the gap between the two.
+    if not quiet:
+        print("\n-- due dates Brightspace already knows " + "-" * 21)
+    import json
+    from pathlib import Path
+
+    collected = json.loads(
+        (Path(__file__).parent / "collected.json").read_text(encoding="utf-8"))
+    window = find_dates.term_window(find_dates.current_term())
+    db = store.connect()
+    got, skipped = exact.load(db, collected, window)
+    db.commit()
+    db.close()
+    print(f"  {got} stored" + (f", {skipped} skipped as stale" if skipped else ""))
 
     if not quiet:
         print("\n-- files " + "-" * 51)
