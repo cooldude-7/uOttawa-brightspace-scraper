@@ -21,14 +21,15 @@ from pathlib import Path
 
 import anthropic
 
+import paths
 import store
 from download import safe_name
 
 HERE = Path(__file__).parent
-EXTRACTED = HERE / "extracted"
-COLLECTED = HERE / "collected.json"
-OUT = HERE / "found_dates.json"
-KEY_FILE = HERE / "api_key.txt"
+EXTRACTED = paths.EXTRACTED
+COLLECTED = paths.COLLECTED
+OUT = paths.FOUND
+KEY_FILE = paths.API_KEY
 
 MODELS = {
     "haiku": "claude-haiku-4-5",

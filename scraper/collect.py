@@ -22,12 +22,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
-from playwright.async_api import async_playwright
+
+import paths
 
 BASE = "https://uottawa.brightspace.com"
 HERE = Path(__file__).parent
-SESSION_FILE = HERE / "session.json"
-OUT_FILE = HERE / "collected.json"
+SESSION_FILE = paths.SESSION
+OUT_FILE = paths.COLLECTED
 
 LP, LE = "1.63", "1.97"
 LOGIN_TIMEOUT_S = 300
@@ -42,6 +43,21 @@ UA = (
 # ------------------------------------------------------------------ session
 
 async def browser_login():
+    # Imported here rather than at the top of the file on purpose. This is the
+    # one function that needs a browser, and the Pi deliberately has none --
+    # see PLAN.md section 2. Everything else in this module is plain HTTP, so
+    # the Pi must be able to import it without Playwright installed.
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise SystemExit(
+            "\nA full login is needed, and that needs a browser.\n\n"
+            "This machine has no browser installed, which is expected if it is\n"
+            "the Pi. Log in on your laptop instead:\n\n"
+            "    python update.py\n\n"
+            "then copy the refreshed session.json across to the Pi.\n"
+        )
+
     print("Opening a browser. Log in and approve the prompt on your phone.\n")
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=False)

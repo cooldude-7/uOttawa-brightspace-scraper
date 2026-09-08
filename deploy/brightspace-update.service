@@ -1,0 +1,29 @@
+# One scrape. Started by brightspace-update.timer, not by you.
+#
+# __USER__ and __REPO__ are filled in by install.sh -- do not edit by hand.
+
+[Unit]
+Description=Check Brightspace for new deadlines
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=__DATA__
+
+[Service]
+Type=oneshot
+User=__USER__
+WorkingDirectory=__REPO__/scraper
+Environment=BRIGHTSPACE_DATA=__DATA__
+ExecStart=__REPO__/.venv/bin/python update.py --quiet
+
+# A scrape that hangs must not still be holding the database when the next
+# one starts half an hour later.
+TimeoutStartSec=20min
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__DATA__
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

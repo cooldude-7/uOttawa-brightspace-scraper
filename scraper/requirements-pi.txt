@@ -1,0 +1,29 @@
+# What the Pi needs. Notably absent: playwright.
+#
+# Logging in is the one job that needs a browser, and that happens on the
+# laptop -- see PLAN.md section 2. Chromium wants 400-800 MB on a real page
+# and the Pi has 1 GB in total, so it is not installed here at all.
+#
+# Install with:  pip install -r requirements-pi.txt
+# On a 3B+ this takes several minutes. It is not stuck.
+
+# Brightspace: the whole client is HTTP and JSON.
+httpx==0.28.1
+
+# Reading documents for dates.
+anthropic==0.69.0
+
+# Pulling text out of files. All three ship prebuilt arm64 wheels, which is
+# why the SD card was imaged 64-bit -- on 32-bit these compile from source.
+pymupdf==1.26.4
+python-pptx==1.0.2
+python-docx==1.1.2
+openpyxl==3.1.5
+
+# The web app.
+fastapi==0.115.12
+uvicorn==0.34.2
+
+# Google Calendar.
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.156.0

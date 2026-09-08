@@ -154,3 +154,176 @@ can't tell the difference, which is why the app just needs this one path.
 
 SQLite runs here in WAL mode (`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL`) — see
 `PLAN.md` §4 for why.
+
+---
+
+# Part 2 — Putting the scraper on the Pi
+
+Part 1 gave you storage. This part gets the code running on it, checking
+Brightspace every 30 minutes on its own.
+
+Do Part 1 first. Every command below assumes `df -h /mnt/data` reports the
+stick, not the SD card.
+
+---
+
+## Step 6 — Get the code onto the Pi
+
+Still in the SSH session:
+
+```bash
+sudo apt update
+sudo apt install -y git python3-venv
+git clone https://github.com/cooldude-7/uottawa-brightspace-scraper.git
+cd uottawa-brightspace-scraper
+```
+
+If the repo is private, GitHub will ask for a username and password, and the
+password it wants is a personal access token rather than your GitHub password.
+Easier alternative: copy the folder from Windows instead, leaving out the
+secrets and the database.
+
+```powershell
+scp -r C:\path\to\uOttawa-brightspace-scraper yourusername@raspberrypi.local:~/
+```
+
+---
+
+## Step 7 — Hand over the two files that cannot travel through git
+
+The Pi needs your API key and a logged-in Brightspace session. Both are
+deliberately gitignored, so they have to be copied by hand — **once**, and
+from the laptop, because logging in needs a browser and the Pi has none.
+
+Run this from Windows PowerShell, in the project folder:
+
+```powershell
+scp scraper\api_key.txt  yourusername@raspberrypi.local:/mnt/data/
+scp scraper\session.json yourusername@raspberrypi.local:/mnt/data/
+```
+
+If you also have Google Calendar working on the laptop, bring those too, plus
+your lab section:
+
+```powershell
+scp scraper\google_client.json yourusername@raspberrypi.local:/mnt/data/
+scp scraper\google_token.json  yourusername@raspberrypi.local:/mnt/data/
+scp scraper\me.json            yourusername@raspberrypi.local:/mnt/data/
+```
+
+Note they go to `/mnt/data/`, not into the code folder. Everything that is
+either secret or changing lives on the stick; the code folder holds only code.
+
+**`session.json` is worth being careful with.** It is not just a Brightspace
+pass — it carries the uOttawa sign-on cookies too, so anyone who reads it can
+be you on email and OneDrive, not only on course pages. The installer sets it
+to owner-only. The other half of that is a Pi with a password worth having
+and no ports forwarded to it from the internet.
+
+---
+
+## Step 8 — Install
+
+```bash
+cd ~/uottawa-brightspace-scraper
+bash deploy/install.sh
+```
+
+It checks the stick is really mounted, builds a Python environment, checks the
+files from Step 7 arrived, and installs two services:
+
+| | |
+|---|---|
+| `brightspace-web` | the card list, always running, on port 8000 |
+| `brightspace-update` | one scrape, started every 30 minutes by a timer |
+
+Installing the Python packages takes several minutes on a 3B+. It is not stuck.
+
+The script is safe to run again — after a `git pull`, run it again and it
+replaces what it installed before.
+
+---
+
+## Step 9 — Check it actually works
+
+Do not wait 30 minutes to find out. Run a scrape immediately and watch it:
+
+```bash
+sudo systemctl start brightspace-update
+journalctl -u brightspace-update -f
+```
+
+`Ctrl+C` stops watching (it does not stop the scrape). What you want to see is
+it finding your courses and reporting either new deadlines or nothing new.
+
+Then open the web app from your phone or laptop browser, at the address the
+installer printed — `http://raspberrypi.local:8000`, or the numeric one if
+that name does not resolve.
+
+Confirm the database is on the stick and not the card:
+
+```bash
+ls -lh /mnt/data/brightspace.db
+```
+
+Then reboot once and check it all comes back by itself:
+
+```bash
+sudo reboot
+```
+
+Wait a minute, reconnect, and:
+
+```bash
+systemctl is-active brightspace-web      # expect: active
+systemctl list-timers brightspace-update # expect: a time in the next 30 min
+```
+
+---
+
+## When the session expires
+
+The Pi renews its own Brightspace session as long as the uOttawa sign-on
+cookies are still good — that is the whole point of §2 in `PLAN.md`. When those
+expire as well, after a few weeks, the Pi cannot fix it: logging in needs a
+browser and a tap on your phone.
+
+You will see it as scrapes failing in the log:
+
+```bash
+journalctl -u brightspace-update -n 30
+```
+
+The fix is Step 7 again — `python update.py` on the laptop to log in properly,
+then copy the refreshed `session.json` across:
+
+```powershell
+scp scraper\session.json yourusername@raspberrypi.local:/mnt/data/
+```
+
+Until push notifications are built (Phase 5), nothing tells you this has
+happened, so it is worth glancing at the card list every few days.
+
+---
+
+## Everyday commands
+
+```bash
+systemctl status brightspace-web            is the app up
+journalctl -u brightspace-update -n 50      what the last scrape did
+sudo systemctl start brightspace-update     scrape now, do not wait for the timer
+systemctl list-timers brightspace-update    when the next one is due
+sudo systemctl restart brightspace-web      after changing anything
+```
+
+## Still to come
+
+Not part of this setup, and not needed for it to be useful:
+
+- **cloudflared** — HTTPS and an address that works away from your home wifi.
+  Right now the app is reachable only from your own network. Web push *requires*
+  HTTPS, so this comes before notifications.
+- **Push notifications** — including the one that says the session expired,
+  instead of you noticing.
+- **A heartbeat** — something that tells you when no scrape has succeeded in
+  three hours, rather than the app quietly going stale.

@@ -14,9 +14,11 @@ from pathlib import Path
 
 from collect import BASE, LE, current_courses, get, get_client, walk_content
 
+import paths
+
 HERE = Path(__file__).parent
-ORIGINALS = HERE / "_originals"
-EXTRACTED = HERE / "extracted"
+ORIGINALS = paths.ORIGINALS
+EXTRACTED = paths.EXTRACTED
 
 # Text pullers are optional; report what's missing instead of crashing.
 READERS = {}

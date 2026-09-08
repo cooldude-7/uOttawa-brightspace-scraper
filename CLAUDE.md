@@ -16,10 +16,14 @@ plain language; avoid jargon or define it in one line. They run everything on
 Working end to end on the laptop: login → scrape → download → read → store →
 web app → calendar. About $1.40 of API spend so far.
 
+**The Pi** is prepared but not yet run on real hardware. Everything it needs
+exists and has been tested where it could be: `paths.py`, `requirements-pi.txt`,
+systemd units in `deploy/`, and `docs/pi-setup.md` end to end. What is untested
+is the Pi itself — nobody has executed a step of it on the actual machine.
+
 Not built yet:
-- **The Pi.** Always-on scraping every 30 min, and PWA push notifications.
-  Hardware: Raspberry Pi 3B+ (1 GB), 256 GB USB stick, unformatted. See
-  `docs/pi-setup.md` — written but never executed.
+- **Anything past the local network.** cloudflared for HTTPS, then PWA push
+  notifications, then a heartbeat for when a scrape stops succeeding.
 - **The Obsidian vault.** Untouched since planning. All documents are already
   downloaded and text-extracted, so this is mostly foldering and frontmatter.
 
@@ -38,6 +42,9 @@ python mysection.py        work out which lab section the user is in
 
 `update.py` chains `collect.py` → `exact.py` → `download.py` → `find_dates.py`.
 
+On the Pi the same commands run, but under systemd rather than by hand — see
+`docs/pi-setup.md` Part 2.
+
 ## How it fits together
 
 - **collect.py** — session handling and every Brightspace tab. `get_client()`
@@ -52,6 +59,9 @@ python mysection.py        work out which lab section the user is in
 - **web.py** + `static/index.html` — FastAPI and one HTML page, no build step
   (it has to run on the Pi).
 - **gcal.py** — Google Calendar.
+- **paths.py** — where data lives. Unset, everything sits next to the code as
+  it always has; `BRIGHTSPACE_DATA=/mnt/data` moves it all to the Pi's USB
+  stick. Nothing else in the codebase builds a data path itself.
 
 ## Things that will bite
 
@@ -72,6 +82,13 @@ python mysection.py        work out which lab section the user is in
   sentence it came from.
 - **Don't hold a SQLite write open across a network call.** That caused
   "database is locked" on every rapid tap.
+- **`/mnt/data` existing does not mean the stick is mounted.** It is an
+  ordinary empty folder on the SD card when the stick is absent, and writing
+  there starts a silent fresh database. `paths.py` requires a
+  `.brightspace-data` marker file and stops hard without it. Don't weaken that.
+- **The Pi has no browser, on purpose.** So `collect.py` imports Playwright
+  inside `browser_login()`, not at module level. Moving that import back to the
+  top breaks the Pi entirely.
 - **Windows has no timezone database.** `zoneinfo` fails; the Ottawa offset is
   computed directly in `exact.py`.
 - **Secrets stay out of git**: `api_key.txt`, `google_client.json`,

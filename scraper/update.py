@@ -46,10 +46,10 @@ def main():
     if not quiet:
         print("\n-- due dates Brightspace already knows " + "-" * 21)
     import json
-    from pathlib import Path
 
-    collected = json.loads(
-        (Path(__file__).parent / "collected.json").read_text(encoding="utf-8"))
+    import paths
+
+    collected = json.loads(paths.COLLECTED.read_text(encoding="utf-8"))
     window = find_dates.term_window(find_dates.current_term())
     db = store.connect()
     got, dropped = exact.load(db, collected, window)

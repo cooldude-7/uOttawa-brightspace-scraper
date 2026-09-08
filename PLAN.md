@@ -117,7 +117,11 @@ work; the Pi only ever runs `incremental_scrape`, which fetches small JSON diffs
 - `httpx` — the entire Brightspace client
 - `sqlite3` — **not Postgres**. Postgres would run on 1 GB but earns nothing here: one
   writer, a few thousand rows, no real concurrency
-- `apscheduler` — the 30-minute job
+- ~~`apscheduler`~~ — **revised 2026-09-08: a systemd timer instead.** Not installed. The
+  Pi already runs systemd, so a timer is one file and no dependency, and it buys two things
+  APScheduler inside the app cannot: a scrape that hangs or crashes cannot take the web app
+  down with it, and `Persistent=true` catches up a window missed while the Pi was off.
+  `journalctl -u brightspace-update` is then the scrape log, for free
 - `pywebpush` — VAPID push
 - `google-auth` + `google-api-python-client` — Calendar
 - `cryptography` (Fernet) — cookie and refresh-token encryption at rest
@@ -138,6 +142,14 @@ Pi. FastAPI serves the `dist/` folder. Service worker + web app manifest for PWA
 - **SQLite, the vault, and the file archive all live on the 256 GB USB stick, not the
   microSD.** A database committing writes every 30 minutes for a year is exactly the workload
   that kills SD cards. The SD holds the OS only.
+- **One environment variable decides where data lives.** `BRIGHTSPACE_DATA=/mnt/data` on the
+  Pi; unset on the laptop, where everything stays next to the code exactly as it always has.
+  `paths.py` is the single place that resolves it.
+- **A marker file proves the stick is actually mounted.** `nofail` means a Pi that boots
+  without the stick comes up anyway, leaving `/mnt/data` as an ordinary empty folder *on the
+  SD card* — so "the folder exists" proves nothing and the app would cheerfully start a fresh
+  empty database there. A `.brightspace-data` file written onto the stick's own filesystem is
+  the check that actually distinguishes the two, and its absence is a hard stop.
 - **Reformat the stick to ext4 before using it.** It almost certainly ships as exFAT or NTFS,
   and both are wrong here: exFAT has no POSIX permissions, no symlinks, and no reliable file
   locking, which makes SQLite genuinely corruption-prone rather than merely slow — and git
@@ -377,8 +389,11 @@ VAPID push, install-to-home-screen. Deliverable: notifications on your phone.
 **Phase 6 — Google Calendar.** OAuth (scope `calendar.events`), a dedicated "uOttawa"
 calendar so nothing pollutes your personal one, accept → insert, X → dismiss.
 
-**Phase 7 — Deploy.** systemd units, cloudflared, zram, log rotation, a heartbeat that pushes
-you a notification if a scrape has not succeeded in 3 hours.
+**Phase 7 — Deploy. Partly done (2026-09-08).** Storage layout, the `BRIGHTSPACE_DATA` split,
+systemd units for the web app and a 30-minute timer, and `deploy/install.sh` to put them in
+place: written and tested, see `docs/pi-setup.md`. Logs come from journald, so log rotation
+needs nothing. Still outstanding: cloudflared, zram, and the heartbeat that pushes you a
+notification if a scrape has not succeeded in 3 hours.
 
 ---
 

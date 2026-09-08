@@ -15,6 +15,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import paths
 import store
 
 HERE = Path(__file__).parent
@@ -56,8 +57,8 @@ def local(stamp):
 
 
 def main():
-    collected = json.loads((HERE / "collected.json").read_text(encoding="utf-8"))
-    found = json.loads((HERE / "found_dates.json").read_text(encoding="utf-8"))
+    collected = json.loads(paths.COLLECTED.read_text(encoding="utf-8"))
+    found = json.loads(paths.FOUND.read_text(encoding="utf-8"))
 
     # Extracted dates, keyed by the document they came from.
     by_doc = {}

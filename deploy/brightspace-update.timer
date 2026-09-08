@@ -1,0 +1,24 @@
+# Every 30 minutes, which is the cadence PLAN.md settled on: often enough
+# that a deadline posted at 2am is known by breakfast, gentle enough to stay
+# within anything Brightspace could reasonably object to.
+
+[Unit]
+Description=Check Brightspace every 30 minutes
+
+[Timer]
+# Not immediately at boot -- give the network and the mount a moment.
+OnBootSec=5min
+OnUnitActiveSec=30min
+
+# Do not land on :00 and :30 exactly. Nothing depends on the precise minute,
+# and an unpredictable one looks less like a machine hammering the server.
+RandomizedDelaySec=120
+
+# If the Pi was off, run once on the next boot rather than silently skipping
+# the missed window.
+Persistent=true
+
+Unit=brightspace-update.service
+
+[Install]
+WantedBy=timers.target

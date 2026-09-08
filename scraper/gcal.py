@@ -19,11 +19,12 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import paths
 import store
 
 HERE = Path(__file__).parent
-CLIENT_FILE = HERE / "google_client.json"      # downloaded from Google Cloud
-TOKEN_FILE = HERE / "google_token.json"        # written after you approve
+CLIENT_FILE = paths.GOOGLE_CLIENT   # downloaded from Google Cloud
+TOKEN_FILE = paths.GOOGLE_TOKEN     # written after you approve
 
 # Manage events, and create/manage calendars this app made -- not blanket
 # access to every calendar in the account.

@@ -21,8 +21,10 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "brightspace.db"
-PREFS_PATH = Path(__file__).parent / "me.json"
+import paths
+
+DB_PATH = paths.DB
+PREFS_PATH = paths.PREFS
 
 
 def load_prefs():

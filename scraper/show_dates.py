@@ -11,7 +11,9 @@ import json
 import sys
 from pathlib import Path
 
-FOUND = Path(__file__).parent / "found_dates.json"
+import paths
+
+FOUND = paths.FOUND
 
 if not FOUND.exists():
     raise SystemExit("No results yet. Run find_dates.py first.")

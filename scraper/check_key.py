@@ -7,8 +7,10 @@ Checks the API key without revealing it, so the output is safe to paste.
 import os
 from pathlib import Path
 
+import paths
+
 HERE = Path(__file__).parent
-KEY_FILE = HERE / "api_key.txt"
+KEY_FILE = paths.API_KEY
 
 
 def mask(key):
@@ -44,7 +46,7 @@ if KEY_FILE.exists():
 else:
     print(f"api_key.txt NOT FOUND at {KEY_FILE}")
     print("   Files that are here:")
-    for f in sorted(HERE.glob("api_key*")):
+    for f in sorted(paths.DATA.glob("api_key*")):
         print(f"     {f.name}")
     file_key = None
 
