@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import gcal
 import store
 
 HERE = Path(__file__).parent
@@ -97,15 +98,35 @@ def get_summary():
 def decide(decision: Decision):
     if decision.status not in ("accepted", "dismissed", "new"):
         raise HTTPException(400, "status must be accepted, dismissed, or new")
+
     db = store.connect()
+    calendar = None
     try:
-        # Accepting is where a Google Calendar event will be created; the
-        # decision is recorded either way so nothing is lost in the meantime.
+        row = db.execute(
+            """SELECT d.*, c.name AS course_name FROM dates d
+               JOIN courses c ON c.id = d.course_id WHERE d.id = ?""",
+            (decision.id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "no such card")
+
         store.decide(db, decision.id, decision.status)
+
+        # The decision is saved first and separately. Calendar trouble must
+        # never cost you the tap you just made.
+        api = gcal.service()
+        if api is not None:
+            if decision.status == "accepted" and not row["gcal_event_id"]:
+                calendar = "added" if gcal.add(api, db, row) else "failed"
+            elif decision.status != "accepted" and row["gcal_event_id"]:
+                gcal.remove(api, db, decision.id, row["gcal_event_id"])
+                calendar = "removed"
         db.commit()
     finally:
         db.close()
-    return {"ok": True, "id": decision.id, "status": decision.status}
+
+    return {"ok": True, "id": decision.id, "status": decision.status,
+            "calendar": calendar}
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

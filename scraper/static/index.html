@@ -334,13 +334,17 @@ async function decide(id, status) {
 
   // Remove it locally straight away; a tap should never wait on the network.
   setTimeout(() => { CARDS = CARDS.filter(c => c.id !== id); render(); }, 180);
-  await api('/api/decide', {
+  const reply = await api('/api/decide', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({id, status})
   });
+  window.__lastCalendar = reply && reply.calendar;
 
+  const result = await api('/api/summary').catch(() => null);
   lastAction = {id, card};
-  showUndo(status === 'accepted' ? 'Kept' : 'Dismissed', card);
+  showUndo(status === 'accepted'
+    ? (window.__lastCalendar === 'added' ? 'Added to calendar' : 'Kept')
+    : 'Dismissed', card);
   api('/api/summary').then(s => {
     document.getElementById('stats').innerHTML =
       `<b>${s.new}</b> waiting · <b>${s.pending}</b> not scheduled yet · ${s.accepted} kept · ${s.dismissed} dismissed`;

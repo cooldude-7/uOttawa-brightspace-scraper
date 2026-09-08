@@ -7,6 +7,8 @@ scraper/me.json
 scraper/_originals/
 scraper/extracted/
 scraper/api_key.txt
+scraper/google_client.json
+scraper/google_token.json
 .env
 *.key
 __pycache__/
