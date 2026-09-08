@@ -63,6 +63,7 @@ def as_card(row):
         "time": row["due_time"] or "",
         "days": left,
         "pending": bool(row["pending"]),
+        "onCalendar": bool(row["gcal_event_id"]),
         "evidence": " ".join((row["source_excerpt"] or "").split()),
     }
 

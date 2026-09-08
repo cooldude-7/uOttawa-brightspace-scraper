@@ -48,6 +48,24 @@
   .stats { color: var(--muted); font-size: 13px; }
   .stats b { color: var(--ink); font-weight: 600; }
 
+  /* A decision has to be reversible after the undo bar has gone, or a
+     mis-tap is permanent. */
+  .tabs { display: flex; gap: 4px; margin-top: 11px; }
+  .tabs button {
+    flex: 0 0 auto; padding: 6px 12px; border-radius: 8px; font-size: 13px;
+    border: 1px solid transparent; background: none; color: var(--muted);
+    cursor: pointer; font-family: inherit;
+  }
+  .tabs button[aria-pressed="true"] {
+    background: var(--card); border-color: var(--line); color: var(--ink);
+    font-weight: 600;
+  }
+  .actions .back {
+    width: auto; padding: 0 13px; font-size: 13px; font-weight: 600;
+    color: var(--accent); background: var(--card);
+  }
+  .oncal { color: var(--yes); }
+
   .filters {
     display: flex; gap: 7px; overflow-x: auto; padding: 10px 16px 12px;
     scrollbar-width: none; background: var(--bg);
@@ -182,6 +200,7 @@
 <header>
   <h1>Deadlines</h1>
   <div class="stats" id="stats">loading…</div>
+  <div class="tabs" id="tabs"></div>
 </header>
 
 <div class="filters" id="filters"></div>
@@ -194,20 +213,34 @@
 </div>
 
 <script>
-let CARDS = [], COURSES = [], course = "all", sessions = "hide", lastAction = null, undoTimer = null;
+let CARDS = [], COURSES = [], course = "all", sessions = "hide",
+    status = "new", lastAction = null, undoTimer = null;
 
 const api = (path, opts) => fetch(path, opts).then(r => r.json());
 
 async function load() {
-  const data = await api(`/api/cards?sessions=${sessions}`);
+  const data = await api(`/api/cards?sessions=${sessions}&status=${status}`);
   CARDS = data.cards;
   COURSES = data.courses;
   renderFilters();
+  renderTabs();
   render();
   const s = await api('/api/summary');
+  renderTabs(s);
   document.getElementById('stats').innerHTML =
     `<b>${s.new}</b> waiting · <b>${s.pending}</b> not scheduled yet · ${s.accepted} kept · ${s.dismissed} dismissed`;
 }
+
+function renderTabs(s) {
+  const counts = s || {};
+  const tabs = [['new', 'Waiting', counts.new], ['accepted', 'Kept', counts.accepted],
+                ['dismissed', 'Dismissed', counts.dismissed]];
+  document.getElementById('tabs').innerHTML = tabs.map(([v, label, n]) =>
+    `<button aria-pressed="${status === v}" onclick="setStatus('${v}')">${label}${
+      n === undefined ? '' : ` <span style="opacity:.6">${n}</span>`}</button>`).join('');
+}
+
+function setStatus(s) { status = s; course = 'all'; load(); }
 
 function renderFilters() {
   const chips = [['all', 'All courses'], ...COURSES.map(c => [c, short(c)])];
@@ -243,7 +276,9 @@ function render() {
   const list = document.getElementById('list');
 
   if (!shown.length) {
-    list.innerHTML = `<div class="empty">Nothing waiting on you here.</div>`;
+    list.innerHTML = `<div class="empty">${
+      status === 'new' ? 'Nothing waiting on you here.'
+      : status === 'accepted' ? 'Nothing kept yet.' : 'Nothing dismissed yet.'}</div>`;
     return;
   }
 
@@ -299,6 +334,7 @@ function cardHTML(c) {
       <div class="tags">
         <span class="tag">${esc(c.kind)}</span>
         <span class="tag">${esc(short(c.course))}</span>
+        ${c.onCalendar ? '<span class="tag oncal">in calendar</span>' : ''}
         ${unsure}
       </div>
     </div>
@@ -307,8 +343,10 @@ function cardHTML(c) {
       ${c.evidence
         ? `<button class="note" aria-expanded="false" aria-label="Where this came from"
              onclick="toggleNote(this, ${c.id})">${NOTE_ICON}</button>` : ''}
-      <button class="no" onclick="decide(${c.id}, 'dismissed')" aria-label="Dismiss">✕</button>
-      <button class="yes" onclick="decide(${c.id}, 'accepted')" aria-label="Keep">✓</button>
+      ${status === 'new'
+        ? `<button class="no" onclick="decide(${c.id}, 'dismissed')" aria-label="Dismiss">✕</button>
+           <button class="yes" onclick="decide(${c.id}, 'accepted')" aria-label="Keep">✓</button>`
+        : `<button class="back" onclick="decide(${c.id}, 'new')">put back</button>`}
     </div>
   </article>`;
 }
@@ -327,7 +365,7 @@ function toggleNote(button, id) {
   card.appendChild(p);
 }
 
-async function decide(id, status) {
+async function decide(id, newStatus) {
   const card = CARDS.find(c => c.id === id);
   const el = document.querySelector(`.card[data-id="${id}"]`);
   if (el) el.classList.add('going');
@@ -336,16 +374,17 @@ async function decide(id, status) {
   setTimeout(() => { CARDS = CARDS.filter(c => c.id !== id); render(); }, 180);
   const reply = await api('/api/decide', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({id, status})
+    body: JSON.stringify({id, status: newStatus})
   });
   window.__lastCalendar = reply && reply.calendar;
 
   const result = await api('/api/summary').catch(() => null);
   lastAction = {id, card};
-  showUndo(status === 'accepted'
-    ? (window.__lastCalendar === 'added' ? 'Added to calendar' : 'Kept')
-    : 'Dismissed', card);
+  showUndo(newStatus === 'accepted'
+      ? (window.__lastCalendar === 'added' ? 'Added to calendar' : 'Kept')
+    : newStatus === 'dismissed' ? 'Dismissed' : 'Put back', card);
   api('/api/summary').then(s => {
+    renderTabs(s);
     document.getElementById('stats').innerHTML =
       `<b>${s.new}</b> waiting · <b>${s.pending}</b> not scheduled yet · ${s.accepted} kept · ${s.dismissed} dismissed`;
   });
