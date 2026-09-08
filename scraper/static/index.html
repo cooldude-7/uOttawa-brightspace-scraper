@@ -273,13 +273,15 @@
 </div>
 
 <script>
-let CARDS = [], COURSES = [], course = "all", sessions = "hide",
+let CARDS = [], COURSES = [], course = "all",
     status = "new", lastAction = null, undoTimer = null;
 
 const api = (path, opts) => fetch(path, opts).then(r => r.json());
 
 async function load() {
-  const data = await api(`/api/cards?sessions=${sessions}&status=${status}`);
+  // Labs and tutorials are always shown -- they are part of the week,
+  // not a category to opt into.
+  const data = await api(`/api/cards?status=${status}`);
   CARDS = data.cards;
   COURSES = data.courses;
   renderFilters();
@@ -311,9 +313,7 @@ function renderFilters() {
   el.innerHTML = chips.map(([v, label]) =>
     `<button class="chip" data-course="${esc(v)}" aria-pressed="${course === v}"
        onclick="setCourse('${esc(v).replace(/'/g, "\\'")}')">${esc(label)}</button>`
-  ).join('') + (MODE === 'notes' ? '' :
-  `<button class="chip" aria-pressed="${sessions === 'all'}" onclick="toggleSessions()">
-     ${sessions === 'hide' ? 'Show labs &amp; tutorials' : 'Hide labs &amp; tutorials'}</button>`);
+  ).join('');
 }
 
 const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
@@ -322,7 +322,6 @@ function setCourse(c) {
   course = c; renderFilters();
   if (MODE === 'notes') renderNotes(); else render();
 }
-function toggleSessions() { sessions = sessions === 'hide' ? 'all' : 'hide'; load(); }
 
 // ------------------------------------------------------------------ notes
 
