@@ -10,7 +10,7 @@ notifications on laptop and phone.
 
 | Decision | Choice | Why |
 |---|---|---|
-| Auth | Brightspace-scoped cookies only | Compromise blast radius is Brightspace, not the whole uOttawa Microsoft account |
+| Auth | Sign-on cookies stored too (**revised 2026-09-08**) | Brightspace-only meant re-authenticating every morning, which defeats unattended scraping. See §2 |
 | Login | Real browser on the laptop, human does MFA | MFA is a one-time step; there is no safe way to automate it |
 | Scraping | Authenticated JSON calls to `/d2l/api/...`, no headless browser | Runs in tens of MB on the Pi; survives D2L UI reskins |
 | Always-on host | **Raspberry Pi 3B+** (Zero 2 W as spare) | 1 GB RAM and wired Ethernet — double the headroom and a far more reliable link than the Zero's 2.4 GHz-only Wi-Fi |
@@ -51,9 +51,32 @@ The browser is needed exactly once, for login, and that happens on the laptop.
 5. When they expire, the Pi pushes a notification: "Brightspace session expired — reconnect."
    You run the helper again. Expected cadence: days to two weeks (measured in Phase 1).
 
-Storing the Microsoft cookies too would stretch that to weeks, at the cost of putting a
-bearer token for your entire uOttawa identity on the Pi. Deliberately not doing that. The
-storage layer is agnostic, so widening later is a config change if reconnect fatigue bites.
+### Revised, 2026-09-08: sign-on cookies are stored
+
+The estimate above was wrong. Measured, the Brightspace session lasted **under 24 hours** —
+logged in one evening, dead by 09:37 the next morning. Steps 4 and 5 never happened; it went
+straight from login to full re-login.
+
+That is survivable while running by hand and fatal to the point of the project. A Pi that
+stops every morning waiting for a phone tap is not scraping every 30 minutes, and a deadline
+posted during the dead hours goes unseen until someone notices.
+
+So the scraper now keeps the identity provider's cookies as well, per domain, and renews
+itself: when the Brightspace session dies it replays the sign-on redirect chain, which the
+provider still recognises, and gets a fresh session with no password and no second factor.
+Sign-on pages hand the browser a form that submits itself with JavaScript; with no browser
+present the form is parsed and posted directly.
+
+**What this costs.** That cookie is a bearer token for the whole uOttawa Microsoft account,
+not just Brightspace. Anyone who can read the session file can be you — on email and OneDrive,
+not only on course pages. It is written owner-only and gitignored, but that is protection
+against accidental disclosure, not against someone with a shell on the machine. The honest
+mitigation is that the file lives on hardware you own, behind your home network, and that the
+Pi should be treated as holding something valuable: no port forwarding, tunnel only, and a
+password worth having.
+
+A full login is still needed when the provider's cookies themselves expire — weeks, typically
+— and the app asks for it with a notification rather than failing silently.
 
 ---
 

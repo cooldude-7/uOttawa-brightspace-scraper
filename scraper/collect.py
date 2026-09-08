@@ -13,8 +13,11 @@ Read-only. Every request is a GET.
 
 import asyncio
 import json
+import os
 import re
+import stat
 import sys
+from html.parser import HTMLParser
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -52,13 +55,7 @@ async def browser_login():
                 cookies = await ctx.cookies()
                 await browser.close()
                 print(f"Logged in after {elapsed}s.\n")
-                # Brightspace-scoped cookies only; the Microsoft session stays
-                # in the browser and is never saved to disk.
-                return {
-                    c["name"]: c["value"]
-                    for c in cookies
-                    if "brightspace.com" in c.get("domain", "")
-                }
+                return keep_cookies(cookies)
             if elapsed and elapsed % 15 == 0:
                 print(f"  waiting... {elapsed}s")
             await asyncio.sleep(1)
@@ -67,13 +64,126 @@ async def browser_login():
     sys.exit("Timed out waiting for login.")
 
 
-def make_client(cookies):
-    return httpx.Client(
-        cookies=cookies,
+# Brightspace's own session lasts hours. The identity provider's cookies
+# last far longer, and holding them is what lets the scraper re-authenticate
+# without a person tapping a phone -- the difference between a Pi that runs
+# unattended and one that stops every morning.
+SSO_DOMAINS = ("brightspace.com", "uottawa.ca", "microsoftonline.com",
+               "microsoft.com", "live.com", "msauth.net", "msftauth.net",
+               "msauthimages.net")
+
+
+def keep_cookies(cookies):
+    """Cookies worth storing, as {domain: {name: value}}.
+
+    Kept per-domain rather than flattened: sending a Microsoft cookie to
+    Brightspace, or the reverse, is at best useless and at worst leaks one
+    site's session to another.
+    """
+    jar = {}
+    for c in cookies:
+        domain = (c.get("domain") or "").lstrip(".")
+        if any(d in domain for d in SSO_DOMAINS):
+            jar.setdefault(domain, {})[c["name"]] = c["value"]
+    return jar
+
+
+def write_session(jar):
+    SESSION_FILE.write_text(json.dumps(jar, indent=2), encoding="utf-8")
+    try:
+        # Owner-only. On Windows this is largely cosmetic, but the file is
+        # gitignored and the real protection is the machine itself -- anyone
+        # with your login can read it, so treat the Pi accordingly.
+        os.chmod(SESSION_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        pass
+
+
+def read_session():
+    if not SESSION_FILE.exists():
+        return {}
+    try:
+        data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    # Older files stored a flat {name: value} of Brightspace cookies only.
+    if data and all(isinstance(v, str) for v in data.values()):
+        return {"uottawa.brightspace.com": data}
+    return data
+
+
+class AutoForm(HTMLParser):
+    """Finds the form an SSO page would submit with JavaScript.
+
+    Single sign-on hands the browser a page whose only content is a form
+    that posts itself. Without a browser to run that script, the form has
+    to be found and posted directly.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.action = None
+        self.fields = {}
+        self._in_form = False
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "form":
+            self._in_form = True
+            self.action = a.get("action")
+        elif tag == "input" and self._in_form:
+            name = a.get("name")
+            if name and a.get("type", "hidden").lower() == "hidden":
+                self.fields[name] = a.get("value", "")
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self._in_form = False
+
+
+def make_client(jar):
+    client = httpx.Client(
         headers={"User-Agent": UA, "Accept": "application/json, text/plain, */*"},
         follow_redirects=True,
         timeout=30.0,
     )
+    for domain, cookies in jar.items():
+        for name, value in cookies.items():
+            client.cookies.set(name, value, domain=domain)
+    return client
+
+
+def refresh_session(client):
+    """Walk the sign-on redirect chain to earn a fresh Brightspace session.
+
+    The identity provider still recognises its own cookies, so it issues a
+    new assertion without asking for a password or a second factor. Returns
+    True if a Brightspace session cookie came back.
+    """
+    try:
+        r = client.get(f"{BASE}/d2l/home")
+    except Exception:
+        return False
+
+    for _ in range(8):
+        if "d2lSessionVal" in client.cookies:
+            return True
+        parser = AutoForm()
+        try:
+            parser.feed(r.text)
+        except Exception:
+            return False
+        if not parser.action or not parser.fields:
+            return False
+        action = parser.action
+        if action.startswith("/"):
+            action = f"{r.url.scheme}://{r.url.host}{action}"
+        try:
+            r = client.post(action, data=parser.fields)
+        except Exception:
+            return False
+
+    return "d2lSessionVal" in client.cookies
 
 
 def session_works(client):
@@ -84,22 +194,37 @@ def session_works(client):
         return False
 
 
-def get_client():
-    """Reuse the saved session if it still works, otherwise log in again."""
-    if SESSION_FILE.exists():
-        try:
-            cookies = json.loads(SESSION_FILE.read_text())
-            client = make_client(cookies)
-            if session_works(client):
-                print("Reusing saved session.\n")
-                return client
-            print("Saved session expired.\n")
-        except Exception:
-            pass
+def current_jar(client):
+    """Whatever the client holds now, back in per-domain form."""
+    jar = {}
+    for c in client.cookies.jar:
+        domain = (c.domain or "").lstrip(".")
+        if any(d in domain for d in SSO_DOMAINS):
+            jar.setdefault(domain, {})[c.name] = c.value
+    return jar
 
-    cookies = asyncio.run(browser_login())
-    SESSION_FILE.write_text(json.dumps(cookies, indent=2))
-    client = make_client(cookies)
+
+def get_client():
+    """A working session: reuse it, renew it, or as a last resort ask you."""
+    jar = read_session()
+    if jar:
+        client = make_client(jar)
+        if session_works(client):
+            print("Reusing saved session.\n")
+            return client
+
+        # Brightspace's session is short-lived, but the sign-on cookies
+        # usually are not -- so try to renew before troubling anyone.
+        print("Brightspace session expired; renewing without a login...")
+        if refresh_session(client) and session_works(client):
+            write_session(current_jar(client))
+            print("Renewed.\n")
+            return client
+        print("Could not renew -- a full login is needed.\n")
+
+    jar = asyncio.run(browser_login())
+    write_session(jar)
+    client = make_client(jar)
     if not session_works(client):
         sys.exit("Logged in but the session did not work. Something changed.")
     return client
