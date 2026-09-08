@@ -6,16 +6,16 @@
 Description=Check Brightspace every 30 minutes
 
 [Timer]
-# Not immediately at boot -- give the network and the mount a moment.
-OnBootSec=5min
-OnUnitActiveSec=30min
+# On the half hour. Calendar rather than "30 minutes after the last run",
+# because Persistent= below only works with a calendar schedule.
+OnCalendar=*:0/30
 
 # Do not land on :00 and :30 exactly. Nothing depends on the precise minute,
 # and an unpredictable one looks less like a machine hammering the server.
 RandomizedDelaySec=120
 
-# If the Pi was off, run once on the next boot rather than silently skipping
-# the missed window.
+# If the Pi was off over a window, run once when it comes back rather than
+# silently skipping to the next half hour.
 Persistent=true
 
 Unit=brightspace-update.service

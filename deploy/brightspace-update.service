@@ -13,6 +13,10 @@ Type=oneshot
 User=__USER__
 WorkingDirectory=__REPO__/scraper
 Environment=BRIGHTSPACE_DATA=__DATA__
+# Without this, Python holds its output in a buffer whenever it is not
+# writing to a screen -- so the log stays empty until the run finishes and
+# `journalctl -f` shows nothing while you watch it.
+Environment=PYTHONUNBUFFERED=1
 ExecStart=__REPO__/.venv/bin/python update.py --quiet
 
 # A scrape that hangs must not still be holding the database when the next
