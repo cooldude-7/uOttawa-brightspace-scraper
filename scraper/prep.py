@@ -61,6 +61,9 @@ Where the item came from:
 --- HOW TO HANDLE THIS KIND OF WORK -----------------------------------------
 {skill}
 
+--- HOW THIS STUDENT LEARNS -------------------------------------------------
+{profile}
+
 --- OTHER DATES IN THIS COURSE ----------------------------------------------
 {dates}
 
@@ -70,6 +73,13 @@ Where the item came from:
 
 Write markdown, starting at heading level 2. No preamble, no sign-off -- this
 goes straight into the student's notes.
+
+Follow the "how this student learns" section as a set of instructions, not as
+background. It describes measured working-memory, attention and task-initiation
+patterns, and material built against it is materially more useful than material
+built on general study advice. Where it conflicts with conventional advice, it
+wins. Never refer to it, quote it, or explain that you are following it -- just
+produce work shaped that way.
 
 Above everything else: never invent a measurement, a result, a data point or a
 graph from an experiment. If the work needs real data the student has not
@@ -119,6 +129,20 @@ def policy_for(course_code, root):
         return f"{course_code}: {mine}\n\nAlways:\n{always}"
     return (f"{course_code} is not listed in the policy file.\n{fallback}\n\n"
             f"Always:\n{always}")
+
+
+def profile_text():
+    """How the student learns, written from their assessment.
+
+    Applies to every skill, not just study: task initiation and working memory
+    change how a lab prep or an assignment breakdown should be shaped, not only
+    how flashcards are written. Absent, nothing is claimed about them.
+    """
+    path = paths.PROFILE / "study-profile.md"
+    if not path.exists():
+        return ("(No profile written. Use ordinary good practice, and do not "
+                "guess at how this student learns.)")
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def material_for(course_name):
@@ -204,6 +228,7 @@ def prepare(db, row, root, skill_override=None):
         excerpt=" ".join((row["source_excerpt"] or "").split()) or "(nothing recorded)",
         policy=policy_for(parts["code"], root),
         skill=skill_text,
+        profile=profile_text(),
         dates="\n".join(f"  {o['due_date']} {o['due_time'] or ''} {o['kind'] or ''} — {o['title']}"
                         for o in others) or "  (none)",
         material=material_for(row["course_name"]))

@@ -414,3 +414,82 @@ the cards load, it works from campus.
 - **A heartbeat.** Nothing tells you the Pi has stopped scraping either, which
   matters more the more you rely on it. Until it exists, `journalctl -u
   brightspace-update -n 20` is the manual version.
+
+---
+
+# Part 4 — The vault, and getting it onto your laptop
+
+`vault.py` writes the Obsidian vault to `/mnt/data/vault`. This gets it into a
+private repo so Obsidian on the laptop can see it.
+
+The vault is its own repository, separate from the code. That is deliberate:
+`profile/study-profile.md` — written from the psychoeducational report — lives
+at `/mnt/data/profile/`, a **sibling** of the vault rather than inside it. It is
+not merely gitignored; it is not in the directory that gets pushed at all, so
+there is no rule to accidentally weaken later.
+
+---
+
+## Step 12 — Let the Pi push to the private repo
+
+A private repo needs credentials. A deploy key is the right kind: it works for
+one repository only, needs no password typed on a headless machine, and can be
+revoked on its own.
+
+On the Pi:
+
+```bash
+ssh-keygen -t ed25519 -C "lucapi vault" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy that whole line. On GitHub, open the **obsidian-brain** repo →
+**Settings** → **Deploy keys** → **Add deploy key**. Paste it, name it `lucapi`,
+and **tick "Allow write access"** — without that it can read but never push.
+
+---
+
+## Step 13 — Point the vault at it
+
+```bash
+cd /mnt/data/vault
+git init -b main
+git config user.name  "lucapi"
+git config user.email "you@example.com"
+git remote add origin git@github.com:YOURNAME/obsidian-brain.git
+ssh -T git@github.com
+```
+
+That last line asks about authenticity the first time — type `yes`. It then says
+something about successful authentication and that GitHub does not provide shell
+access. That message is the success case, not an error.
+
+Then:
+
+```bash
+cd ~/uOttawa-brightspace-scraper/scraper
+BRIGHTSPACE_DATA=/mnt/data ~/uOttawa-brightspace-scraper/.venv/bin/python vault.py --push
+```
+
+`--push` commits and pushes only when something actually changed, so it is safe
+to run on every scrape.
+
+---
+
+## Step 14 — Obsidian on the laptop
+
+In PowerShell, somewhere you keep documents:
+
+```powershell
+git clone https://github.com/YOURNAME/obsidian-brain.git
+```
+
+Then in Obsidian: **Open folder as vault** → pick that folder.
+
+To keep it current, install the **Obsidian Git** community plugin and set it to
+pull every few minutes. Or just run `git pull` in that folder when you want the
+latest — the Pi is the one writing, so pulling is all the laptop needs to do.
+
+**If you write notes on the laptop**, commit and push them too, and the Pi's next
+`--push` will merge rather than clobber. Your writing is protected on the Pi side
+regardless: `vault.py` never overwrites a file without `generated: true`.

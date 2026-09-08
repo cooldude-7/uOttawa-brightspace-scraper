@@ -2,6 +2,7 @@ r"""
 The Obsidian vault: one brain per course, rebuilt from what has been scraped.
 
     python vault.py             build or refresh it
+    python vault.py --push      build, then commit and push it
     python vault.py --dry-run   say what it would write, write nothing
 
 Everything here is deterministic -- database rows and already-extracted text
@@ -273,9 +274,43 @@ def build(dry=False):
     return report
 
 
+def push(root):
+    """Commit and push the vault, if it has been set up as a git repo.
+
+    The vault is its own repository, separate from the code. That is not
+    tidiness: the profile written from the psychoeducational report lives at
+    `profile/`, a sibling of `vault/` and outside it, so it is not merely
+    gitignored here -- it is not in the directory that gets pushed at all.
+    """
+    import subprocess
+    if not (root / ".git").exists():
+        print("\n  not a git repo yet -- see docs/pi-setup.md Part 4")
+        return
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    def git(*args, check=True):
+        return subprocess.run(["git", "-C", str(root), *args],
+                              capture_output=True, text=True, check=check)
+
+    git("add", "-A")
+    if not git("status", "--porcelain").stdout.strip():
+        print("\n  nothing changed, nothing pushed")
+        return
+    git("commit", "-m", f"vault: {stamp}")
+    # -u origin HEAD so the very first push sets its own upstream, rather
+    # than failing with advice about push.autoSetupRemote.
+    r = git("push", "-u", "origin", "HEAD", check=False)
+    if r.returncode:
+        print(f"\n  push failed: {(r.stderr or '').strip().splitlines()[-1:]}")
+    else:
+        print(f"\n  pushed to {git('remote', 'get-url', 'origin').stdout.strip()}")
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     build(dry="--dry-run" in argv)
+    if "--push" in argv and "--dry-run" not in argv:
+        push(paths.VAULT)
 
 
 if __name__ == "__main__":
