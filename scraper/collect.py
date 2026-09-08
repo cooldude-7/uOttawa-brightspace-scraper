@@ -373,9 +373,10 @@ def count_dates(course):
     return exact
 
 
-def main():
-    term_override = sys.argv[1] if len(sys.argv) > 1 else None
-    client = get_client()
+def main(term_override=None, client=None):
+    if term_override is None and len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        term_override = sys.argv[1]
+    client = client or get_client()
 
     courses, term = current_courses(client, term_override)
     if not courses:

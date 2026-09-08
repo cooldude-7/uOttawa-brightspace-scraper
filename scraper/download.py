@@ -147,14 +147,14 @@ def extract(path, out_dir):
     return out, f"{len(text.split()):,} words"
 
 
-def main():
+def main(client=None):
     if "pdf" not in READERS:
         print("No PDF reader installed. Run:")
         print("    python -m pip install pymupdf python-pptx python-docx")
         print("If pymupdf will not install on Python 3.14, use pypdf instead:")
         print("    python -m pip install pypdf python-pptx python-docx\n")
 
-    client = get_client()
+    client = client or get_client()
     courses, _ = current_courses(client)
 
     grand_files = grand_text = 0

@@ -404,13 +404,14 @@ def api_key():
     )
 
 
-def main():
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
     key = api_key()
     if not key.startswith("sk-ant-"):
         sys.exit("That does not look like an Anthropic key -- they start with sk-ant-")
 
-    all_docs = "--all" in sys.argv
-    chosen = next((a.split("=")[1] for a in sys.argv if a.startswith("--model=")), None)
+    all_docs = "--all" in argv
+    chosen = next((a.split("=")[1] for a in argv if a.startswith("--model=")), None)
     compare = not all_docs and not chosen
     keys = ["haiku", "sonnet"] if compare else [chosen or "haiku"]
 
@@ -432,7 +433,7 @@ def main():
 
     # Comparing two models means asking twice about the same text, so the
     # already-read shortcut has to stay out of the way.
-    reread = compare or "--force" in sys.argv
+    reread = compare or "--force" in argv
 
     print(f"{len(docs)} documents found; skipping any already read\n")
 
