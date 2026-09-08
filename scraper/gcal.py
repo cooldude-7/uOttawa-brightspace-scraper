@@ -6,6 +6,8 @@ Puts accepted deadlines into your Google Calendar.
     python gcal.py --push       send everything already accepted
     python gcal.py --list       show what this app has put there
     python gcal.py --check      compare the calendar against your decisions
+    python gcal.py --prune      remove other sections' deadlines you accepted
+                                before the app knew which section is yours
     python gcal.py --remove-all take it all back out again
     python gcal.py --separate   move them to their own calendar you can hide
     python gcal.py --primary    move them back to your main calendar
@@ -285,6 +287,57 @@ def main():
         if new_target != CALENDAR:
             print("  In Google Calendar it appears under 'My calendars' --")
             print("  untick it to hide every deadline at once.")
+        return
+
+    if "--prune" in argv:
+        # Deadlines accepted before the app knew which section or lab group is
+        # yours. They are somebody else's work, and they are sitting in your
+        # calendar. Dismissing is reversible -- they reappear under
+        # "dismissed" in the app if this ever gets it wrong.
+        db = store.connect()
+        rows = db.execute(
+            """SELECT d.*, c.d2l_id AS course_d2l_id, c.name AS course_name
+               FROM dates d JOIN courses c ON c.id = d.course_id
+               WHERE d.status = 'accepted'
+               ORDER BY d.due_date""").fetchall()
+        keep = {r["id"] for r in store.only_mine(rows)}
+        strays = [r for r in rows if r["id"] not in keep]
+
+        if not strays:
+            print("\n  Nothing you have accepted belongs to another section "
+                  "or group.")
+            db.close()
+            return
+
+        on_cal = sum(1 for r in strays if r["gcal_event_id"])
+        print(f"\n  {len(strays)} accepted deadline(s) belong to a section or "
+              f"group that is not yours")
+        print(f"  ({on_cal} of them are on your calendar):\n")
+        for r in strays:
+            p_ = store.course_parts(r["course_name"])
+            mark = "  <- on calendar" if r["gcal_event_id"] else ""
+            print(f"    {(r['due_date'] or 'no date'):<12} {p_['code']:<10} "
+                  f"{r['title'][:44]}{mark}")
+
+        if "--yes" not in argv:
+            answer = input("\n  Remove these from the calendar and dismiss "
+                           "them? [y/N] ").strip().lower()
+            if answer != "y":
+                print("  Left alone. Nothing changed.")
+                db.close()
+                return
+
+        removed = 0
+        for r in strays:
+            if r["gcal_event_id"]:
+                remove(api, db, r["id"], r["gcal_event_id"])
+                removed += 1
+            store.decide(db, r["id"], "dismissed")
+        db.commit()
+        db.close()
+        print(f"\n  {removed} event(s) removed from the calendar, "
+              f"{len(strays)} dismissed.")
+        print("  They are still in the app under 'dismissed' if this was wrong.")
         return
 
     if "--check" in argv:

@@ -70,6 +70,7 @@ python update.py           check Brightspace for anything new (the main one)
 python web.py              the web app; prints a phone-reachable address
 python cards.py            same list in the terminal; --review walks it
 python gcal.py --check     reconcile calendar against stored decisions
+python gcal.py --prune     drop other sections' deadlines already accepted
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
@@ -142,8 +143,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   one assignment still says June. Everything is filtered to the term window.
 - **Section-specific deadlines.** One assignment lists five different dates
   for lab sections A1–A5. The section marker is part of an event's identity,
-  or A2 and A5 collapse into one. The user is **A4**, established by matching
-  their personal due date against the text, stored in `me.json`.
+  or A2 and A5 collapse into one. The user is **A4** in GNG2101, established by
+  matching their personal due date against the text, and the **Thursday** group
+  in MCG2360 (A02 tutorial, Thu 19:00 — from their timetable, since
+  `mysection.py` works out sections but not day groups). Both live in
+  `me.json`. `store.only_mine()` applies it, and the card list, the vault and
+  `prep.py` all go through it — it was once inline in `cards()` and the other
+  two showed all five sections. `gcal.py --prune` cleans up anything accepted
+  before the filter knew.
 - **What the app may write is the user's professor's call, not ours.**
   `Skills/course-policies.md` holds it per course, in plain English the user
   edits. A course not listed there defaults to prepare-not-draft. One rule sits
