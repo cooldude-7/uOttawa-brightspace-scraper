@@ -22,10 +22,20 @@ minutes under a systemd timer. `docs/pi-setup.md` was followed end to end on
 the real hardware and corrected where it was wrong.
 
 The laptop's database was copied across rather than starting clean, so the
-decisions and the $1.38 already spent came with it. First scrape on the Pi:
+decisions and the money already spent came with it. First scrape on the Pi:
 204s, **$0.0000** — all 63 documents recognised as already read, which is
 `text_hash` doing exactly what it was built for. Google Calendar reconciles
-from the Pi with all 35 events matching.
+from the Pi.
+
+Since then the corpus has been re-read once with a prompt that also asks for
+tasks, and the tasks have been placed in the term by `link_tasks.py`. Total
+spend **$2.27**. Roughly 64 items waiting, 72 accepted, 55 collapsed as
+duplicates.
+
+Two real misses were found by the user reading their own list, not by any test:
+a quiz whose date lived only in a special-access override (see below), and
+setup tasks that were never extractable at all because the prompt only asked
+for dates.
 
 **Not proven yet: overnight session renewal.** The Brightspace session dies in
 under 24 hours; the Pi is supposed to replay the sign-on chain and renew itself
