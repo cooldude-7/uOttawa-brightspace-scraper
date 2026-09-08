@@ -51,6 +51,10 @@ Item: {title}
 Kind: {kind}
 Due: {due}
 Today: {today}
+
+Every date below is given with its weekday already worked out. Use the weekday
+you are given; never calculate one yourself, and never write a day name for a
+date that does not carry one.
 {who}
 
 Where the item came from:
@@ -138,6 +142,22 @@ def policy_for(course_code, root):
         return f"{course_code}: {mine}\n\nAlways:\n{always}"
     return (f"{course_code} is not listed in the policy file.\n{fallback}\n\n"
             f"Always:\n{always}")
+
+
+def with_weekday(iso):
+    """'2026-09-17' -> '2026-09-17 (Thursday)'.
+
+    The model was given bare dates and worked the weekday out itself, calling
+    Thursday 17 September "Wed 17 Sep" in a lab prep -- and getting the same
+    date right in another document, so it is a slip rather than a pattern.
+    A schedule that names the wrong day is worse than one that names no day:
+    it is confidently wrong about when to turn up. Python knows the answer, so
+    the model is never asked the question.
+    """
+    try:
+        return f"{iso} ({date.fromisoformat(iso).strftime('%A')})"
+    except (TypeError, ValueError):
+        return str(iso or "")
 
 
 def who_text(course_d2l_id):
@@ -258,14 +278,15 @@ def prepare(db, row, root, skill_override=None):
         course=f"{parts['code']} — {parts['title']}",
         title=row["title"], kind=row["kind"] or "assignment",
         due=vault.when(row) or "no date given",
-        today=date.today().isoformat(),
+        today=with_weekday(date.today().isoformat()),
         excerpt=" ".join((row["source_excerpt"] or "").split()) or "(nothing recorded)",
         policy=policy_for(parts["code"], root),
         skill=skill_text,
         who=who_text(row["course_d2l_id"]),
         profile=profile_text(),
-        dates="\n".join(f"  {o['due_date']} {o['due_time'] or ''} {o['kind'] or ''} — {o['title']}"
-                        for o in others) or "  (none)",
+        dates="\n".join(
+            f"  {with_weekday(o['due_date'])} {o['due_time'] or ''} "
+            f"{o['kind'] or ''} — {o['title']}" for o in others) or "  (none)",
         material=material_for(row["course_name"]))
 
     client = anthropic.Anthropic(api_key=find_dates.api_key())
