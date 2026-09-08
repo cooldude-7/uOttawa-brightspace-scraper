@@ -108,16 +108,28 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+_prepared = False
+
+
 def connect():
-    db = sqlite3.connect(DB_PATH)
+    # Without a timeout SQLite gives up the instant another connection holds
+    # the write lock, which a web request and a scrape happening together
+    # will do routinely. Thirty seconds is far longer than any write here.
+    db = sqlite3.connect(DB_PATH, timeout=30.0)
     db.row_factory = sqlite3.Row
     # Append-style writes rather than scattered ones -- see PLAN.md section 4.
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=NORMAL")
     db.execute("PRAGMA foreign_keys=ON")
-    db.executescript(SCHEMA)
-    migrate(db)
-    db.executescript(INDEXES)
+
+    # Schema and migration are process-wide work, not per-connection work.
+    # Running them on every request took a write lock for no reason.
+    global _prepared
+    if not _prepared:
+        db.executescript(SCHEMA)
+        migrate(db)
+        db.executescript(INDEXES)
+        _prepared = True
     return db
 
 

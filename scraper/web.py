@@ -100,8 +100,10 @@ def decide(decision: Decision):
     if decision.status not in ("accepted", "dismissed", "new"):
         raise HTTPException(400, "status must be accepted, dismissed, or new")
 
+    # The decision is written and committed on its own, before anything
+    # touches the network. Holding a write transaction open across a call to
+    # Google locks the database for every other tap in the meantime.
     db = store.connect()
-    calendar = None
     try:
         row = db.execute(
             """SELECT d.*, c.name AS course_name FROM dates d
@@ -110,21 +112,26 @@ def decide(decision: Decision):
         ).fetchone()
         if row is None:
             raise HTTPException(404, "no such card")
-
         store.decide(db, decision.id, decision.status)
+        db.commit()
+    finally:
+        db.close()
 
-        # The decision is saved first and separately. Calendar trouble must
-        # never cost you the tap you just made.
-        api = gcal.service()
-        if api is not None:
+    calendar = None
+    api = gcal.service()
+    if api is not None:
+        # Second, short transaction: only the event id is written back, and
+        # only after Google has already answered.
+        db = store.connect()
+        try:
             if decision.status == "accepted" and not row["gcal_event_id"]:
                 calendar = "added" if gcal.add(api, db, row) else "failed"
             elif decision.status != "accepted" and row["gcal_event_id"]:
                 gcal.remove(api, db, decision.id, row["gcal_event_id"])
                 calendar = "removed"
-        db.commit()
-    finally:
-        db.close()
+            db.commit()
+        finally:
+            db.close()
 
     return {"ok": True, "id": decision.id, "status": decision.status,
             "calendar": calendar}
