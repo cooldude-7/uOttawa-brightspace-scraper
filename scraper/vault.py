@@ -141,9 +141,13 @@ def build(dry=False):
         raw = by_d2l.get(course["d2l_id"], {})
 
         rows = db.execute(
-            """SELECT * FROM dates WHERE course_id = ? AND status IN ('new','accepted')
-               ORDER BY due_date IS NULL, due_date, due_time""",
+            """SELECT d.*, c.d2l_id AS course_d2l_id FROM dates d
+               JOIN courses c ON c.id = d.course_id
+               WHERE d.course_id = ? AND d.status IN ('new','accepted')
+               ORDER BY d.due_date IS NULL, d.due_date, d.due_time""",
             (course["id"],)).fetchall()
+        # Your section's work, not all five lab groups'.
+        rows = store.only_mine(rows)
 
         dated = [r for r in rows if r["due_date"]]
         tasks = [r for r in rows if r["kind"] == "todo"]

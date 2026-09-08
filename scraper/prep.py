@@ -160,12 +160,14 @@ def material_for(course_name):
 
 
 def waiting(db):
-    return db.execute(
-        """SELECT d.*, c.name AS course_name FROM dates d
-           JOIN courses c ON c.id = d.course_id
+    """Work waiting to be prepared -- yours only, not every lab section's."""
+    rows = db.execute(
+        """SELECT d.*, c.name AS course_name, c.d2l_id AS course_d2l_id
+           FROM dates d JOIN courses c ON c.id = d.course_id
            WHERE d.status IN ('new','accepted')
              AND d.kind NOT IN ('todo','session')
            ORDER BY d.due_date IS NULL, d.due_date, d.due_time""").fetchall()
+    return store.only_mine(rows)
 
 
 def note_path(root, course_name, title):

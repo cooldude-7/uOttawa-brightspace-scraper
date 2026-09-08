@@ -494,24 +494,40 @@ def cards(db, status="new", mine_only=True):
         (status,),
     ).fetchall()
 
-    if not mine_only:
-        return rows
+    return only_mine(rows) if mine_only else rows
 
+
+def only_mine(rows, course_key="course_d2l_id"):
+    """Drop deadlines that belong to somebody else's section or lab group.
+
+    A course listing five lab groups produces five times the deadlines and
+    four of them were never yours. Shared by the card list, the vault and
+    prep.py -- it was written inline in cards() and the other two showed all
+    five sections, which is both noise and a way to prepare the wrong one.
+    """
     prefs = load_prefs()
     sections = prefs.get("sections", {})
     groups = prefs.get("groups", {})
     if not sections and not groups:
         return rows
 
+    def same(a, b):
+        # Case-insensitive on purpose. audience() yields "a4" and mysection.py
+        # saves what it yields, so the two agree -- but a hand-edited me.json
+        # saying "A4" would silently hide the user's own deadlines, and a rule
+        # that quietly drops a real deadline is the one failure this project
+        # exists to prevent.
+        return str(a).strip().lower() == str(b).strip().lower()
+
     kept = []
     for row in rows:
-        course = str(row["course_d2l_id"])
+        course = str(row[course_key])
         section, group = audience(row["title"])
-        # A card naming no section belongs to everyone; only a card naming
-        # someone else's is dropped.
-        if section and course in sections and section != sections[course]:
+        # A deadline naming no section belongs to everyone; only one naming
+        # somebody else's is dropped.
+        if section and course in sections and not same(section, sections[course]):
             continue
-        if group and course in groups and group != groups[course]:
+        if group and course in groups and not same(group, groups[course]):
             continue
         kept.append(row)
     return kept
