@@ -13,8 +13,8 @@ plain language; avoid jargon or define it in one line. They run everything on
 
 ## State
 
-Working end to end on the laptop: login → scrape → download → read → store →
-web app → calendar. About $1.40 of API spend so far.
+Working end to end: login → scrape → download → read → store → link tasks →
+web app → calendar → vault. Running on the Pi, not the laptop.
 
 **The Pi is running** (2026-09-08). A 3B+ wired to a TP-Link travel router,
 256 GB stick formatted ext4 and mounted at `/mnt/data`, scraping every 30
@@ -52,14 +52,25 @@ which matters because `web.py` has no authentication at all. The page carries a
 manifest and apple-touch icons, so it sits on the home screen and opens full
 screen like an app. iOS honours those over plain http, no certificate needed.
 
+**The vault is built** and larger in scope than §6 planned: a note per course,
+every document and announcement, user-editable `Skills/`, and `prep.py` to run
+a skill against a real item under the course's own AI policy. See `PLAN.md`
+Phase 3.
+
 Not built yet:
+- **`vault.py` is not in the automatic cycle.** `update.py` chains through
+  `link_tasks.py` and stops; the vault only refreshes when run by hand, so it
+  goes stale between scrapes. Adding it (and `--push`) to `update.py` is small
+  and probably the next thing worth doing.
+- **`prep.py` has never run against the real API.** Verified only with the call
+  mocked — the prompt is right, the output is unproven.
 - **Push notifications.** Nothing tells you a deadline appeared; you have to
   open the app. Web push needs a secure context — worth testing whether
   Tailscale's `*.ts.net` certificates satisfy that before buying a domain.
 - **A heartbeat.** Nothing tells you the Pi has stopped, either. This matters
   more now that it is being trusted.
-- **The Obsidian vault.** Untouched since planning. All documents are already
-  downloaded and text-extracted, so this is mostly foldering and frontmatter.
+- **The vault is not synced yet.** `obsidian-brain` exists as a private repo;
+  the deploy key and `vault.py --push` are `docs/pi-setup.md` Part 4, not done.
 
 ## Commands
 
