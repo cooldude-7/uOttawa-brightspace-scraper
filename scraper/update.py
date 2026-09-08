@@ -19,7 +19,9 @@ import download
 import exact
 import find_dates
 import link_tasks
+import paths
 import store
+import vault
 
 
 def main():
@@ -83,6 +85,19 @@ def main():
             # Never let this sink a scrape. Deadlines are the product; timing
             # a to-do is a convenience on top of them.
             print(f"  could not link tasks: {e}")
+
+    # The vault is built from what the scrape just stored, so it belongs at
+    # the end of the scrape rather than as a thing to remember. Deterministic
+    # and free -- it only reshapes rows that are already there.
+    if not quiet:
+        print("\n-- vault " + "-" * 51)
+    try:
+        vault.build()
+        vault.push(paths.VAULT, quiet=True)
+    except Exception as e:
+        # Same reasoning as link_tasks: a vault that failed to rebuild is an
+        # inconvenience, a scrape that died taking the deadlines with it is not.
+        print(f"  could not rebuild the vault: {e}")
 
     db = store.connect()
     after = store.summary(db)

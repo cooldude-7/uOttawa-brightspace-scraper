@@ -278,7 +278,7 @@ def build(dry=False):
     return report
 
 
-def push(root):
+def push(root, quiet=False):
     """Commit and push the vault, if it has been set up as a git repo.
 
     The vault is its own repository, separate from the code. That is not
@@ -288,7 +288,10 @@ def push(root):
     """
     import subprocess
     if not (root / ".git").exists():
-        print("\n  not a git repo yet -- see docs/pi-setup.md Part 4")
+        # Called from every scrape, so saying this every half hour would be
+        # noise in the log. Worth saying when a person asked for it.
+        if not quiet:
+            print("\n  not a git repo yet -- see docs/pi-setup.md Part 4")
         return
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -298,7 +301,8 @@ def push(root):
 
     git("add", "-A")
     if not git("status", "--porcelain").stdout.strip():
-        print("\n  nothing changed, nothing pushed")
+        if not quiet:
+            print("\n  nothing changed, nothing pushed")
         return
     git("commit", "-m", f"vault: {stamp}")
     # -u origin HEAD so the very first push sets its own upstream, rather

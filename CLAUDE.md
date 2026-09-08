@@ -57,13 +57,13 @@ every document and announcement, user-editable `Skills/`, and `prep.py` to run
 a skill against a real item under the course's own AI policy. See `PLAN.md`
 Phase 3.
 
+`prep.py` has run for real: a quiz and a lab report, ~$0.20 each. Three
+defects came out of reading those two documents — it hedged about which lab
+group the user is in, left a self-correction in the finished page, and named
+Thursday 17 September as "Wed 17 Sep". All three fixed; the weekday one by
+computing weekdays in Python and forbidding the model from deriving its own.
+
 Not built yet:
-- **`vault.py` is not in the automatic cycle.** `update.py` chains through
-  `link_tasks.py` and stops; the vault only refreshes when run by hand, so it
-  goes stale between scrapes. Adding it (and `--push`) to `update.py` is small
-  and probably the next thing worth doing.
-- **`prep.py` has never run against the real API.** Verified only with the call
-  mocked — the prompt is right, the output is unproven.
 - **Push notifications.** Nothing tells you a deadline appeared; you have to
   open the app. Web push needs a secure context — worth testing whether
   Tailscale's `*.ts.net` certificates satisfy that before buying a domain.
@@ -91,7 +91,8 @@ python prep.py 412         run the right skill against one item
 ```
 
 `update.py` chains `collect.py` → `exact.py` → `download.py` → `find_dates.py`
-→ `link_tasks.py`.
+→ `link_tasks.py` → `vault.py`. The last two are wrapped so a failure there
+cannot take a scrape down with it — deadlines are the product.
 
 On the Pi the same commands run, but under systemd rather than by hand — see
 `docs/pi-setup.md` Part 2.
