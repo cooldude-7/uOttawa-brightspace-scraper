@@ -52,10 +52,14 @@ def main():
         (Path(__file__).parent / "collected.json").read_text(encoding="utf-8"))
     window = find_dates.term_window(find_dates.current_term())
     db = store.connect()
-    got, skipped = exact.load(db, collected, window)
+    got, dropped = exact.load(db, collected, window)
     db.commit()
     db.close()
-    print(f"  {got} stored" + (f", {skipped} skipped as stale" if skipped else ""))
+    print(f"  {got} stored" + (f", {len(dropped)} outside this term:" if dropped else ""))
+    for course, title, due in dropped:
+        print(f"      {due}  {course:<26} {str(title)[:34]}")
+    if dropped:
+        print("      (left over from a previous offering -- say if one of these is real)")
 
     if not quiet:
         print("\n-- files " + "-" * 51)

@@ -75,9 +75,15 @@ def entries(course):
 
 
 def load(db, collected, window=(None, None)):
-    """Store them. Returns (added, skipped_stale)."""
+    """Store them. Returns (added, [(course, title, date) dropped as stale]).
+
+    Dropped items are returned rather than counted, because a rule that
+    silently discards deadlines is exactly the failure this project exists
+    to prevent -- if it ever drops a real one, it has to be visible.
+    """
     start, end = window
-    added = stale = 0
+    added = 0
+    dropped = []
 
     for course in collected:
         course_id = store.upsert_course(
@@ -92,7 +98,7 @@ def load(db, collected, window=(None, None)):
             # one GNG2101 assignment still says June. Storing that would put
             # a deadline months in the past on the list.
             if start and not (start <= due <= end):
-                stale += 1
+                dropped.append((course["name"][:26], title, due))
                 continue
 
             added += store.save_dates(db, course_id, None, [{
@@ -104,4 +110,4 @@ def load(db, collected, window=(None, None)):
                 "source_excerpt": "Brightspace lists this due date on the item itself.",
             }])
 
-    return added, stale
+    return added, dropped
