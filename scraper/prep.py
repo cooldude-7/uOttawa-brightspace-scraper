@@ -51,6 +51,7 @@ Item: {title}
 Kind: {kind}
 Due: {due}
 Today: {today}
+{who}
 
 Where the item came from:
 {excerpt}
@@ -89,6 +90,14 @@ ends up in a submission.
 
 Say plainly when the material does not tell you something, rather than
 producing a confident-looking version of it.
+
+What you write is a finished document the student will study from, not a
+record of how you got there. Do not narrate checking, second-guessing or
+correcting yourself in it -- no "wait", no "let me verify", no abandoned
+arithmetic left mid-line. Do that work before you write; the page should
+contain only the corrected version. Flagging genuine uncertainty about the
+COURSE MATERIAL is different and is wanted -- that belongs in plain sentences,
+not in crossed-out working.
 """
 
 
@@ -129,6 +138,29 @@ def policy_for(course_code, root):
         return f"{course_code}: {mine}\n\nAlways:\n{always}"
     return (f"{course_code} is not listed in the policy file.\n{fallback}\n\n"
             f"Always:\n{always}")
+
+
+def who_text(course_d2l_id):
+    """The student's own lab section and day group for this course.
+
+    Without it the model hedges about the student's own week -- "Lab 1 (if
+    Wednesday group) / (if Thursday group)" -- when me.json has known the
+    answer all along. The deadlines were already filtered correctly; only the
+    prose did not know.
+    """
+    prefs = store.load_prefs()
+    key = str(course_d2l_id)
+    bits = []
+    if prefs.get("sections", {}).get(key):
+        bits.append(f"lab section {prefs['sections'][key].upper()}")
+    if prefs.get("groups", {}).get(key):
+        bits.append(f"the {prefs['groups'][key].capitalize()} lab group")
+    if not bits:
+        return ("This student's lab section for this course is not known. Do "
+                "not guess it, and do not write a schedule that depends on it.")
+    return ("This student is in " + " and ".join(bits) + ". Everything below is "
+            "already filtered to them -- write their schedule as fact, never "
+            "as \"if you are in group X\".")
 
 
 def profile_text():
@@ -230,6 +262,7 @@ def prepare(db, row, root, skill_override=None):
         excerpt=" ".join((row["source_excerpt"] or "").split()) or "(nothing recorded)",
         policy=policy_for(parts["code"], root),
         skill=skill_text,
+        who=who_text(row["course_d2l_id"]),
         profile=profile_text(),
         dates="\n".join(f"  {o['due_date']} {o['due_time'] or ''} {o['kind'] or ''} — {o['title']}"
                         for o in others) or "  (none)",
