@@ -5,6 +5,7 @@ Puts accepted deadlines into your Google Calendar.
     python gcal.py --setup      authorise once, in a browser
     python gcal.py --push       send everything already accepted
     python gcal.py --list       show what this app has put there
+    python gcal.py --check      compare the calendar against your decisions
     python gcal.py --remove-all take it all back out again
     python gcal.py --separate   move them to their own calendar you can hide
     python gcal.py --primary    move them back to your main calendar
@@ -283,6 +284,50 @@ def main():
         if new_target != CALENDAR:
             print("  In Google Calendar it appears under 'My calendars' --")
             print("  untick it to hide every deadline at once.")
+        return
+
+    if "--check" in argv:
+        db = store.connect()
+        accepted = db.execute(
+            "SELECT COUNT(*) FROM dates WHERE status = 'accepted'").fetchone()[0]
+        dated = db.execute(
+            "SELECT COUNT(*) FROM dates WHERE status = 'accepted' "
+            "AND due_date IS NOT NULL").fetchone()[0]
+        linked = db.execute(
+            "SELECT COUNT(*) FROM dates WHERE status = 'accepted' "
+            "AND gcal_event_id IS NOT NULL").fetchone()[0]
+        # An event id on something you did not keep means a stale event.
+        orphan_ids = db.execute(
+            "SELECT id, title FROM dates WHERE status != 'accepted' "
+            "AND gcal_event_id IS NOT NULL").fetchall()
+        missing = db.execute(
+            "SELECT id, due_date, title FROM dates WHERE status = 'accepted' "
+            "AND due_date IS NOT NULL AND gcal_event_id IS NULL").fetchall()
+        db.close()
+
+        on_calendar = len(mine(api))
+
+        print(f"\n  Kept, in total            {accepted}")
+        print(f"  ... of those, with a date {dated}   (undated ones cannot be scheduled)")
+        print(f"  ... recorded as scheduled {linked}")
+        print(f"  Events actually on Google  {on_calendar}")
+
+        if dated == linked == on_calendar and not orphan_ids:
+            print("\n  Everything matches.")
+            return
+
+        print()
+        if missing:
+            print(f"  {len(missing)} kept but never sent -- run: python gcal.py --push")
+            for row in missing[:8]:
+                print(f"      {row['due_date']}  {row['title'][:44]}")
+        if orphan_ids:
+            print(f"  {len(orphan_ids)} event(s) for cards you no longer keep:")
+            for row in orphan_ids[:8]:
+                print(f"      {row['title'][:52]}")
+        if on_calendar != linked:
+            print(f"  Google has {on_calendar} but {linked} are recorded here --")
+            print("  an event was probably deleted in Google Calendar directly.")
         return
 
     if "--list" in argv:
