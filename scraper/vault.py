@@ -3,6 +3,8 @@ The Obsidian vault: one brain per course, rebuilt from what has been scraped.
 
     python vault.py             build or refresh it
     python vault.py --push      build, then commit and push it
+    python vault.py --bundle    also write one file per course, for uploading
+                                into a Claude Project
     python vault.py --dry-run   say what it would write, write nothing
 
 Everything here is deterministic -- database rows and already-extracted text
@@ -119,6 +121,114 @@ def line_for(row, today):
             pass
     tail = f"  ·  before {row['linked_to']}" if row["linked_to"] else ""
     return f"- [ ] **{when(row) or 'no date'}** — {row['title']}{left}{tail}"
+
+
+def bundle(dry=False):
+    """One markdown file per course, holding everything about it.
+
+    For dropping into a Claude Project as its knowledge. The vault is the
+    right shape for reading and the wrong shape for uploading -- forty files
+    to drag per course, five times over. This is the same content in one file.
+
+    Written into the vault so it syncs to the laptop with everything else, and
+    can be picked up from the Obsidian clone rather than fetched off the Pi.
+    """
+    root = paths.VAULT
+    today = date.today()
+    db = store.connect()
+    made = []
+
+    for course in db.execute("SELECT * FROM courses ORDER BY name").fetchall():
+        parts = store.course_parts(course["name"])
+        raw = {}
+        if paths.COLLECTED.exists():
+            for c in json.loads(paths.COLLECTED.read_text(encoding="utf-8")):
+                if c.get("id") == course["d2l_id"]:
+                    raw = c
+                    break
+
+        rows = store.only_mine(db.execute(
+            """SELECT d.*, c.d2l_id AS course_d2l_id FROM dates d
+               JOIN courses c ON c.id = d.course_id
+               WHERE d.course_id = ? AND d.status IN ('new','accepted')
+               ORDER BY d.due_date IS NULL, d.due_date, d.due_time""",
+            (course["id"],)).fetchall())
+
+        out = [front({"course": parts["code"], "kind": "bundle",
+                      "title": f"{parts['code']} — everything",
+                      "built": today.isoformat()}),
+               "", f"# {parts['code']} — {parts['title']}", "",
+               f"Everything this course has posted, in one file, as of "
+               f"{today.strftime('%d %B %Y')}. Built for uploading into a "
+               f"Claude Project; the vault itself is the readable version.", ""]
+
+        dated = [r for r in rows if r["due_date"] and r["kind"] != "todo"]
+        tasks = [r for r in rows if r["kind"] == "todo"]
+        waiting = [r for r in rows if not r["due_date"] and r["kind"] != "todo"]
+
+        out += ["## Deadlines", ""]
+        out += [f"- **{when(r) or 'no date'}** — {r['title']}"
+                f"{'  (' + r['kind'] + ')' if r['kind'] else ''}" for r in dated] \
+               or ["_None recorded._"]
+        out += [""]
+        if tasks:
+            out += ["## Things to do", ""]
+            out += [f"- {r['title']}"
+                    f"{'  — before ' + r['linked_to'] if r['linked_to'] else ''}"
+                    for r in tasks] + [""]
+        if waiting:
+            out += ["## Announced, no date yet", ""]
+            out += [f"- {r['title']}" for r in waiting] + [""]
+
+        anns = raw.get("announcements") or []
+        if anns:
+            out += ["## Announcements", ""]
+            for a in anns:
+                body = ((a.get("Body") or {}).get("Text") or "").strip()
+                if not body:
+                    continue
+                out += [f"### {a.get('Title') or 'untitled'}"
+                        f"  ({(a.get('StartDate') or '')[:10] or 'undated'})",
+                        "", body, ""]
+
+        folder = paths.EXTRACTED / safe_name(course["name"], 40)
+        if folder.is_dir():
+            out += ["## Course material", ""]
+            for f in sorted(folder.glob("*.txt")):
+                if f.name == "_links.txt":
+                    continue
+                out += [f"### {f.stem}", "",
+                        f.read_text(encoding="utf-8", errors="replace").strip(), ""]
+
+        text = "\n".join(out)
+        path = root / "Bundles" / f"{slug(parts['code'])} - {slug(parts['title'], 40)}.md"
+        if not dry:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        made.append((path, len(text.split())))
+
+    if not dry:
+        readme = root / "Bundles" / "README.md"
+        readme.write_text(
+            "---\n" + MARK + "\n---\n\n# Bundles\n\n"
+            "One file per course, holding everything that course has posted.\n\n"
+            "These exist to be uploaded into a Claude Project — one project per\n"
+            "course, one file each — so you can ask questions with the whole\n"
+            "course already loaded. Rebuild them with `python vault.py --bundle`\n"
+            "when a course has posted a lot of new material, and re-upload.\n\n"
+            "They duplicate what is in `Courses/`, which is the version meant for\n"
+            "reading. If the duplication clutters Obsidian's search, add this\n"
+            "folder under Settings → Files & Links → Excluded files.\n",
+            encoding="utf-8")
+    db.close()
+
+    print("\n  bundles for uploading into a Claude Project:")
+    for path, words in made:
+        print(f"    {words:>7,} words   {path.name}")
+    print(f"\n  in {root / 'Bundles'}")
+    if dry:
+        print("  (dry run -- nothing written)")
+    return made
 
 
 def build(dry=False):
@@ -317,6 +427,8 @@ def push(root, quiet=False):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     build(dry="--dry-run" in argv)
+    if "--bundle" in argv:
+        bundle(dry="--dry-run" in argv)
     if "--push" in argv and "--dry-run" not in argv:
         push(paths.VAULT)
 

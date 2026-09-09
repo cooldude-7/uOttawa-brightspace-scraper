@@ -86,6 +86,7 @@ python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
 python vault.py            build the Obsidian vault (no API cost)
+python vault.py --bundle   one file per course, to upload to a Claude Project
 python prep.py --list      work waiting to be prepared, with ids
 python prep.py 412         run the right skill against one item
 ```
@@ -118,6 +119,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   announcement as its own note. Deterministic and free — it only reshapes what
   is already in the database. `skills.py` seeds the editable markdown in
   `Skills/` once and never touches it again.
+- **Per-course chat lives in Claude Projects, not in this app.** One project
+  per course, with `Bundles/<course>.md` as its knowledge. An Ask tab was
+  built into the web app and reverted (177edb0, then its revert): Projects is
+  a far better interface, works on both the user's devices, takes a photo of a
+  whiteboard, and costs nothing beyond a subscription they already pay for,
+  where every question through the API costs money. The bundle is the price of
+  that choice — it has to be re-run and re-uploaded when a course posts a lot
+  of new material.
 - **prep.py** — runs a skill against one real item and writes the result into
   its note in `Work/`. How far it goes is decided by
   `Skills/course-policies.md`, not by code: GNG2101's professor permits AI
