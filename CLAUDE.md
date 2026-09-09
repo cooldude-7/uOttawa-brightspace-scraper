@@ -37,10 +37,27 @@ a quiz whose date lived only in a special-access override (see below), and
 setup tasks that were never extractable at all because the prompt only asked
 for dates.
 
-**Not proven yet: overnight session renewal.** The Brightspace session dies in
-under 24 hours; the Pi is supposed to replay the sign-on chain and renew itself
-without anyone tapping a phone. The session file was regenerated in the new
-per-domain format for exactly this, but the real test is the first morning.
+**Overnight session renewal works** (2026-09-09), and the first morning is how
+it was found not to. Every run from 08:00 failed with "could not renew"; two
+bugs were in the way, and neither was the expired login everyone assumes:
+
+1. `refresh_session()` asked whether a `d2lSessionVal` cookie existed. The
+   expired one was loaded straight from `session.json`, so it saw the name it
+   wanted and returned success before posting a single form. A dead cookie has
+   the same name as a live one — the test has to be `session_works()`, which
+   asks Brightspace rather than the jar.
+2. The walk started at `/d2l/home`. Without a session that returns 272 bytes of
+   JavaScript reading `window.location.hash` — no form, no `Location` header,
+   nothing to follow. `/d2l/login` is where a session is *started*, and it
+   redirects into the SAML chain properly.
+
+With those fixed the Pi renews silently: `/d2l/login` → Microsoft →
+`SAMLResponse` posted to `samlLogin.d2l` → working session, no password and no
+second factor, because the sign-on cookies were valid the whole time.
+
+`probe_session.py` is what found it, by printing the chain rather than
+reasoning about it — cookie names and domains only, never values. Reach for it
+first if renewal breaks again.
 
 On the Pi, run things through the virtual environment, not plain `python3`:
 `~/uOttawa-brightspace-scraper/.venv/bin/python`, with
@@ -210,6 +227,11 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   Pi will scrape once and then be stuck at the next expiry. One carrying the
   sign-on cookies is around 7 KB across several domains. Check the size before
   trusting it; the fix is to move it aside and log in again.
+- **Renewal has two entry points and only one of them works.** `/d2l/home` is
+  where a browser lands once it already has a session; starting one goes
+  through `/d2l/login`. And never test a session by looking for a cookie by
+  name — expired and fresh are indistinguishable that way. Both mistakes were
+  made here and both looked exactly like an expired login in the logs.
 - **Secrets stay out of git**: `api_key.txt`, `google_client.json`,
   `google_token.json`, `session.json`. The session file now holds sign-on
   cookies — a bearer token for the whole uOttawa account. Treat it seriously,
