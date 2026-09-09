@@ -475,6 +475,27 @@ def finish_run(db, run_id, seen, read, found, cost, error=None):
     )
 
 
+def last_success(db):
+    """When a full scrape last finished without an error, as a UTC string.
+
+    None means never -- a fresh database, or every attempt so far has failed.
+    """
+    row = db.execute(
+        """SELECT finished_at FROM runs
+           WHERE mode = 'update' AND finished_at IS NOT NULL AND error IS NULL
+           ORDER BY id DESC LIMIT 1""").fetchone()
+    return row["finished_at"] if row else None
+
+
+def last_error(db):
+    """The most recent failed scrape, so the app can say what went wrong."""
+    row = db.execute(
+        """SELECT finished_at, error FROM runs
+           WHERE mode = 'update' AND error IS NOT NULL
+           ORDER BY id DESC LIMIT 1""").fetchone()
+    return (row["finished_at"], row["error"]) if row else (None, None)
+
+
 # ------------------------------------------------------------------ reads
 
 def cards(db, status="new", mine_only=True):

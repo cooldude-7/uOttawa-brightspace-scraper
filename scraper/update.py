@@ -25,7 +25,39 @@ import vault
 
 
 def main():
+    """Run a scrape, and record whether it worked.
+
+    The recording is the point of the wrapper. Without a row saying a scrape
+    finished cleanly, a dead Pi and a quiet week look identical -- which is
+    exactly how the app could go stale for days without anyone noticing.
+    """
     argv = sys.argv[1:]
+
+    db = store.connect()
+    run_id = store.start_run(db, "update")
+    db.commit()
+    db.close()
+
+    try:
+        scrape(argv)
+    except BaseException as e:
+        # BaseException, not Exception: collect.get_client() raises SystemExit
+        # when a full login is needed, and that is precisely the failure most
+        # worth recording rather than letting exit silently.
+        db = store.connect()
+        store.finish_run(db, run_id, 0, 0, 0, 0,
+                         error=f"{type(e).__name__}: {e}"[:400])
+        db.commit()
+        db.close()
+        raise
+
+    db = store.connect()
+    store.finish_run(db, run_id, 0, 0, 0, 0)
+    db.commit()
+    db.close()
+
+
+def scrape(argv):
     quiet = "--quiet" in argv
     started = time.time()
 

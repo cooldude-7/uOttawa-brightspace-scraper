@@ -11,7 +11,7 @@ http://<your-laptop-ip>:8000 (the address is printed on startup).
 import mimetypes
 import socket
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -238,6 +238,45 @@ def vault_note(path: str):
         # Readable without it, just unformatted. Better than a 500.
         html = "<pre>" + body.replace("&", "&amp;").replace("<", "&lt;") + "</pre>"
     return {"title": f.stem.lstrip("_"), "html": html, "path": path}
+
+
+# The scraper runs hourly from 07:00 to 21:00, so a long gap overnight is
+# correct and a long gap at noon is not. Flagging the first would train the
+# user to ignore the second.
+WINDOW = (7, 21)
+STALE_HOURS = 3
+
+
+@app.get("/api/health")
+def health():
+    """Is this still working? Silence is otherwise indistinguishable from a
+    quiet week, which is how the app could go days out of date unnoticed."""
+    db = store.connect()
+    try:
+        last = store.last_success(db)
+        failed_at, error = store.last_error(db)
+    finally:
+        db.close()
+
+    age_hours = None
+    if last:
+        try:
+            age_hours = (datetime.now(timezone.utc)
+                         - datetime.fromisoformat(last)).total_seconds() / 3600
+        except ValueError:
+            pass
+
+    in_window = WINDOW[0] <= datetime.now().hour <= WINDOW[1]
+    stale = age_hours is None or (age_hours > STALE_HOURS and in_window)
+
+    return {
+        "lastSuccess": last,
+        "ageHours": None if age_hours is None else round(age_hours, 2),
+        "stale": stale,
+        "inWindow": in_window,
+        "error": error if (stale and error) else None,
+        "failedAt": failed_at if (stale and error) else None,
+    }
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
