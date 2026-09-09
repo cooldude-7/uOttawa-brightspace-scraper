@@ -112,18 +112,6 @@ CREATE TABLE IF NOT EXISTS dates (
     decided_at     TEXT
 );
 
--- One conversation per course, kept so a question asked on Tuesday still has
--- Monday's answer above it. Created by CREATE TABLE IF NOT EXISTS, so an
--- existing database grows it on the next connect without a migration.
-CREATE TABLE IF NOT EXISTS chats (
-    id         INTEGER PRIMARY KEY,
-    course_id  INTEGER NOT NULL REFERENCES courses(id),
-    role       TEXT NOT NULL,
-    text       TEXT NOT NULL,
-    cost_usd   REAL DEFAULT 0,
-    created_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS runs (
     id          INTEGER PRIMARY KEY,
     started_at  TEXT NOT NULL,
@@ -144,7 +132,6 @@ INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_dates_status ON dates(status, due_date);
 CREATE INDEX IF NOT EXISTS idx_dates_resolved ON dates(course_id, resolved_title);
 CREATE INDEX IF NOT EXISTS idx_docs_course ON documents(course_id);
-CREATE INDEX IF NOT EXISTS idx_chats_course ON chats(course_id, id);
 """
 
 
