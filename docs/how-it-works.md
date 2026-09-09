@@ -24,9 +24,15 @@ room, once an hour, and I review the cards on my phone.
 deadlines Brightspace never lists, and I approve each one before it goes on
 my calendar."*
 
-**If they ask what it costs:** about three cents a run, $2.56 total since I
-started, because documents that haven't changed are skipped entirely — a
-recent run read 2 documents and skipped 67.
+**If they ask what it costs:** about three cents a run, because documents
+that haven't changed are skipped entirely — one run read 2 documents and
+skipped 67.
+
+> Every figure in this document came from a real run on **2026-09-09**. They
+> move: total spend went from $2.27 to $2.56 in a single day. Quote *cost per
+> run* rather than total spend — a per-run figure is the measured result of a
+> design decision, where a running total is just an input and invites the
+> wrong question. Re-run and re-read before quoting any of them out loud.
 
 ---
 
@@ -75,7 +81,9 @@ without me.
 
 **Obsidian vault** — every document, announcement and assignment is also
 written out as organised notes, one folder per course, pushed to a private
-GitHub repo on every run. It doubles as a searchable archive and as
+GitHub repo on every run. *(The push is wired into every run, but whether the
+Pi's key is actually installed is a manual setup step — check it on the Pi
+before saying the vault syncs from there.)* It doubles as a searchable archive and as
 per-course files I can load into Claude Projects to ask questions about my
 own coursework.
 
@@ -179,6 +187,18 @@ The timer was set to re-run a scrape it had missed while the Pi was off. That
 setting does nothing on the kind of timer I'd used, so a missed window was
 just skipped — silently, with no error anywhere.
 
+### 5. Four fifths of the list was somebody else's work
+
+The filter that shows only my own lab section was written inside the function
+that builds the phone cards — so the cards were right, but the vault and the
+prep step never had it and listed all five sections. Most of what those showed
+was other people's deadlines.
+
+Pulling it out into one shared filter turned up the next instance before it
+happened: `me.json` holds my section, and a hand-edited `"A4"` instead of
+`"a4"` would have matched nothing — **silently hiding my own deadlines while
+showing everyone else's.** The comparison ignores case now.
+
 **Two smaller ones in the same family:** a three-minute scrape logged
 absolutely nothing under the Pi's scheduler, because Python holds back its
 output when nothing's watching. And a styling name collided with the card's
@@ -241,6 +261,8 @@ Because it's mostly empty. That gap is the entire reason the app exists.
 - **Stale dates from reused course shells.** Everything is filtered to the
   current term, which is blunt — one course still shows assignments dated
   2025 that may be this year's, shifted.
-- **No automated tests.**
+- **No automated tests.** Some commit messages describe tests; no test file
+  was ever committed on either branch. Say "I verified it by hand against real
+  data" — true, and still worth credit. Never say "wrote tests".
 - **Built for one student.** Anyone else would need their own uOttawa login,
   and it depends on a system the university controls and hasn't agreed to.
