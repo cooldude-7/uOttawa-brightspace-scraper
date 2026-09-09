@@ -170,6 +170,13 @@ def make_client(jar):
     return client
 
 
+# Where a session is *started*. Not /d2l/home -- that is where a browser
+# lands once it already has one, and without a session it answers with 272
+# bytes of JavaScript that reads the URL fragment, which no amount of form
+# parsing can follow. /d2l/login redirects into the SAML chain properly.
+LOGIN_START = "/d2l/login"
+
+
 # The cookies Brightspace itself issues, as opposed to the sign-on cookies
 # that earn them. These are the short-lived half.
 D2L_SESSION_COOKIES = ("d2lSessionVal", "d2lSecureSessionVal",
@@ -199,7 +206,7 @@ def refresh_session(client):
     drop_d2l_session(client)
 
     try:
-        r = client.get(f"{BASE}/d2l/home")
+        r = client.get(BASE + LOGIN_START)
     except Exception:
         return False
 

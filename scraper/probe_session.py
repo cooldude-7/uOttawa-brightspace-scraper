@@ -48,8 +48,8 @@ def main():
     print("  dropped the expired Brightspace cookies first, so a stale one")
     print("  cannot be mistaken for a fresh one.\n")
 
-    r = client.get(f"{collect.BASE}/d2l/home")
-    print(f"  GET /d2l/home -> {r.status_code}")
+    r = client.get(collect.BASE + collect.LOGIN_START)
+    print(f"  GET {collect.LOGIN_START} -> {r.status_code}")
     for hop in r.history:
         print(f"       via {hop.status_code}  {str(hop.url)[:100]}")
     print(f"       landed on {str(r.url)[:110]}")
