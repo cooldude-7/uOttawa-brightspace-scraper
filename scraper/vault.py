@@ -421,6 +421,23 @@ def push(root, quiet=False):
         return subprocess.run(["git", "-C", str(root), *args],
                               capture_output=True, text=True, check=check)
 
+    # The laptop pushes too: Skills/ and course-policies.md are meant to be
+    # edited in Obsidian. Without pulling first, the Pi's next push is rejected
+    # as out of date -- and stays rejected on every scrape from then on, in a
+    # log nobody reads. --autostash so the rebuild that just happened does not
+    # block the rebase.
+    has_upstream = git("rev-parse", "--abbrev-ref", "--symbolic-full-name",
+                       "@{u}", check=False).returncode == 0
+    if has_upstream:
+        pull = git("pull", "--rebase", "--autostash", check=False)
+        if pull.returncode:
+            # Leave nothing half-rebased for a person to find later.
+            git("rebase", "--abort", check=False)
+            last = (pull.stderr or pull.stdout or "").strip().splitlines()
+            print(f"\n  could not pull before pushing -- the vault at {root} "
+                  f"needs sorting out by hand:\n    {last[-1] if last else '?'}")
+            return
+
     git("add", "-A")
     if not git("status", "--porcelain").stdout.strip():
         if not quiet:
