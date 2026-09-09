@@ -1,7 +1,10 @@
 # How this app works — the plain-language version
 
 Written to be read the night before an interview. No code, no jargon that
-isn't explained. Everything here is true of what actually runs today.
+isn't explained.
+
+`docs/project-summary.md` has the evidence and the numbers. This is the same
+thing said out loud.
 
 ---
 
@@ -9,193 +12,235 @@ isn't explained. Everything here is true of what actually runs today.
 
 Most of my professors don't fill in the due-date fields in Brightspace. The
 real deadlines are written into course outlines, lecture slides and
-announcements — sometimes one sentence on slide 30. So staying on top of
-them meant opening every document by hand. This app does that instead: it
-logs into Brightspace, downloads every course document, reads them with an
-AI model, pulls out every date it finds, and shows each one to me as a card
-with a check and an X. Check puts it on my Google Calendar. X dismisses it
-forever. Nothing reaches my calendar without me approving it.
+announcements — sometimes one sentence on slide 30. So staying on top of them
+meant opening every document by hand. This app does that instead: it logs
+into Brightspace, downloads every course document, reads them with an AI
+model, and shows each date it finds as a card with a check and an X. Check
+puts it on my Google Calendar. X dismisses it forever. Nothing reaches my
+calendar without me approving it. It runs by itself on a Raspberry Pi in my
+room, once an hour, and I review the cards on my phone.
 
 **The one-sentence version:** *"It reads my course documents and finds the
-deadlines that Brightspace never lists, and I approve each one before it
-goes on my calendar."*
+deadlines Brightspace never lists, and I approve each one before it goes on
+my calendar."*
+
+**If they ask what it costs:** about three cents a run, $2.56 total since I
+started, because documents that haven't changed are skipped entirely — a
+recent run read 2 documents and skipped 67.
 
 ---
 
-## The pieces, and what each one actually does here
+## The pieces, and what each one does here
 
-**Python** — the programming language the whole thing is written in. Nothing
-more interesting than that; it's the language, the way a drawing might be in
-metric.
+**Python** — the language the whole thing is written in. About 5,400 lines
+across 22 files.
 
-**Brightspace's API** — an API is a way for one program to ask another
-program for information directly, instead of a human clicking through a
-website. Brightspace's own site is really just a program asking its API for
-your courses and displaying the answer. My app asks the same API the same
-questions. That's why it doesn't need to open a browser or pretend to click
-anything — it asks directly and gets back plain data.
+**Brightspace's API** — an API is how one program asks another for
+information directly, instead of a human clicking a website. Brightspace's
+own site is a program asking its API for your courses and displaying the
+answer; my app asks the same API the same questions. That's why it never
+needs to open a browser or pretend to click anything.
 
-**The session file** — logging in with a password and two-factor is
-something only a human can do. So it's done once in a real browser, and the
-"you are logged in" token that Brightspace hands back is saved to a file.
-Every run after that reuses it. When it expires, the app quietly signs
-itself back in through the university's login system without asking me
-again. *(This file is sensitive — it's effectively a key to my whole
-university account, so it's kept out of the shared code.)*
+**The session file** — logging in with a password and two-factor is something
+only a human can do, so it's done once in a real browser and the "you are
+logged in" token is saved. Every run after that reuses it, and renews it
+automatically when it expires. *(That file is effectively a key to my whole
+university account, so it's kept off GitHub and the Pi isn't exposed to the
+internet.)*
 
-**Text extraction** — a PDF or PowerPoint isn't text a program can read
-directly; it's a layout. Separate tools pull the readable words out of PDFs,
-PowerPoints, Word files and spreadsheets so the AI has something to read.
+**Text extraction** — a PDF or PowerPoint isn't text a program can read;
+it's a layout. Separate tools pull the words out of PDFs, PowerPoints, Word
+files and spreadsheets so the AI has something to read.
 
-**The Claude API** — this is how the app sends a document's text to the AI
-model and gets an answer back automatically, instead of me pasting things
-into a chat window. The important part is that the answer comes back in a
-fixed structure — a list of `{title, date, kind, confidence, the sentence it
-came from}` — rather than as a paragraph. That makes it something the app
-can store and act on.
+**The Claude API** — how the app sends a document's text to the AI model and
+gets an answer back automatically, instead of me pasting into a chat window.
+The answer comes back in a fixed structure — a list of `{title, date, kind,
+confidence, the sentence it came from}` — rather than as a paragraph, which
+is what makes it something the app can store and act on.
 
-**SQLite** — a database that lives in a single file on the laptop. It
-remembers every document already read, every deadline found, and every
-decision I made. This is what makes the app cheap and quiet to re-run: if a
-document hasn't changed since last time, it's skipped entirely — not
-re-downloaded, not re-read, no AI cost. And because it remembers what I
-dismissed, it never asks me about the same thing twice.
+**SQLite** — a database that lives in a single file. It remembers every
+document already read, every deadline found, and every decision I made. This
+is what makes re-running nearly free, and why it never asks me twice about
+something I dismissed.
 
-**FastAPI** — the small web server that puts the cards on a page, so I can
-review deadlines on my phone instead of in a terminal.
+**FastAPI** — the small web server that puts the cards on a page.
 
-**Google Calendar API** — how checking a card creates a real calendar event.
-The app made its own separate "uOttawa" calendar, so my deadlines can be
-hidden with one checkbox and never mix into my personal one.
+**Tailscale** — a private network between my phone and the Pi. The app has no
+password on it, so instead of putting it on the public internet I made it
+reachable only from my own devices. That was a deliberate trade: it's the
+entire security boundary.
 
----
+**systemd timer** — the Pi's scheduler. It's what makes the whole thing run
+without me.
 
-## What happens when I run it
-
-One command, `python update.py`, and it goes in this order:
-
-1. **Log in** — reuse the saved session; renew it silently if it's expired.
-2. **List my courses** — Brightspace returns 22 course shells, including old
-   terms and non-academic ones. Each carries a term code (`20259` is Fall
-   2025, `20269` is Fall 2026), so filtering to the current term picks out
-   exactly my five real courses with nothing configured by hand.
-3. **Take the easy dates first** — assignments and quizzes sometimes *do*
-   have a real due-date field. Those are free and exact, so they're stored
-   before any AI is involved, and the AI is told to ignore them so it doesn't
-   report the same thing twice.
-4. **Download every document** and pull the text out of it.
-5. **Cheap filter** — any document with almost no date-like text is dropped
-   before the AI ever sees it. Roughly half the documents never cost
-   anything.
-6. **Read the rest with AI** — each surviving document goes to the model,
-   which returns the deadlines it found and, for each one, the sentence it
-   read it from.
-7. **Store and de-duplicate** — the same deadline turns up in six documents
-   worded six different ways. They get collapsed into one card.
-8. **Show me the list** — check or X on each.
-
-A routine run costs close to nothing, because step 5 and the "already read
-this" memory mean almost nothing gets sent to the AI twice. Total spend
-so far is about $1.40.
+**Obsidian vault** — every document, announcement and assignment is also
+written out as organised notes, one folder per course, pushed to a private
+GitHub repo on every run. It doubles as a searchable archive and as
+per-course files I can load into Claude Projects to ask questions about my
+own coursework.
 
 ---
 
-## The three things that went wrong, and what I changed
+## What happens on each run
 
-These are the useful part. Each one is a decision, not just a fix.
+Once an hour, 07:00 to 21:00:
 
-### 1. The cheap model invented deadlines
+1. **Log in** — reuse the saved session, renew it silently if it's expired.
+2. **List my courses** — Brightspace returns 22 course shells including old
+   terms and non-academic ones. Each carries a term code (`20269` is Fall
+   2026), so filtering to the current term picks out my five real courses
+   with nothing configured by hand.
+3. **Take the easy dates first** — assignments and quizzes sometimes do have
+   a real due-date field. Those are free and exact, so they're stored before
+   any AI is involved, and the AI is told to ignore them so nothing is
+   reported twice.
+4. **Download every document** and pull the text out.
+5. **Cheap filter** — documents with almost no date-like text are dropped
+   before the AI sees them.
+6. **Read the rest with AI** — each document goes to the model, which returns
+   the deadlines it found and the sentence it read each one from.
+7. **Second pass across the whole course** — one document can't know when the
+   Arduino lab is, so "install the Arduino IDE" comes back with no date. A
+   separate step looks at the whole course and ties each undated task to the
+   dated thing it has to come before. If there's no real thing to attach it
+   to, it stays undated on purpose rather than being given a guessed date.
+8. **Collapse duplicates** — the same deadline turns up in six documents
+   worded six ways.
+9. **Rebuild the vault** and push it.
+10. **Show me the cards** on my phone.
+
+**Why hourly and not every 30 minutes,** which was the original plan: nothing
+gets posted at 3am. Running through the night cost money and Brightspace
+requests to discover that nothing had changed. A deadline posted at 21:30 is
+picked up at 07:00, which is still long before I'd have acted on it.
+
+---
+
+## The failures worth telling
+
+All four are the same shape, and it's the thing I'd most want to say in an
+interview: **the failure you have to design against isn't the one that throws
+an error — it's the one that looks like it worked.**
+
+### 1. Session renewal that had never once worked
+
+The Pi failed every hourly run from 08:00 with "a full login is needed" — but
+the sign-on cookies were valid the entire time.
+
+The renewal check asked whether a `d2lSessionVal` cookie *existed*. The
+expired one was loaded straight out of the session file, so the check saw the
+name it was looking for and reported success **without posting a single
+form**. The feature had shipped days earlier and had never worked once, and
+nothing ever said so.
+
+**A dead cookie has the same name as a live one. The test has to ask
+Brightspace, not the jar.**
+
+Found by writing a throwaway probe that printed the login redirect chain hop
+by hop — at which point it was obvious the walk was also starting at the
+wrong page (`/d2l/home` returns 272 bytes of JavaScript when you're logged
+out; `/d2l/login` is where a session actually starts).
+
+### 2. The cheap model invented deadlines
 
 Before committing to a model I tested two against three real syllabi I'd
-already checked by hand.
-
-On the Thermodynamics outline the cheaper model returned **11 deadlines. The
-more expensive one returned zero — and zero was correct.** All eleven were
-fabricated. It had read the sentence *"8 weekly assignments will be given in
-total"*, and invented eight specific due dates by counting forward from it.
-Both midterms came back as dates ending in `-00`, made up from *"the midterm
-dates will be decided in class."*
+checked by hand. On the Thermodynamics outline the cheaper model returned
+**11 deadlines; the better one returned zero — and zero was correct.** All
+eleven were fabricated. It had read *"8 weekly assignments will be given in
+total"* and invented eight specific due dates by counting forward. Both
+midterms came back as dates ending in `-00`, made up from *"the midterm dates
+will be decided in class."*
 
 **What I changed:** paid for the better model, and made every card display
-the exact sentence the date came from, so a wrong one is obvious in a
-glance instead of requiring me to go open Brightspace.
+the exact sentence the date came from, so a wrong one is obvious at a glance.
+A made-up deadline is worse than no app at all, because it gets trusted.
 
-**Why it matters:** a made-up deadline is worse than no app at all. Someone
-who trusts a hallucinated midterm date is worse off than someone who never
-had the tool. The point of the app is to be trusted, so recall matters when
-*finding* dates and never when *inventing* them.
+### 3. Two of my real lab deadlines silently disappeared
 
-### 2. Two of my real lab deadlines silently disappeared
+A rule stripped the text in brackets before comparing titles, so "Lab exam"
+and "Lab exam (hands-on practical skills)" would be recognised as one event.
+But my lab section was also in brackets — "(Group A4)" and "(Group A3)" both
+reduced to the same text, and two real deadlines vanished from a list that
+had correctly found all five sections.
 
-The same event gets described differently in different documents — "Lab exam",
-"Lab exam (hands-on practical skills)". So there's a rule that strips the
-part in brackets before comparing, to recognise those as one event.
+I only caught it by reading my own list and noticing labs were missing. No
+test would have found it; the app did exactly what it was told.
 
-But my lab section was *also* written in brackets. "Soldering lab submission
-(Group A4)" and "(Group A3)" both reduced to the same text, so the app
-merged them and two real deadlines vanished from a list that had correctly
-found all five sections.
+**What I changed:** two entries now count as the same event based on course,
+date, time and lab section — **not on wording** — because no amount of
+text-cleaning reconciles "Lab 1 Report Submission" with "Lab 1 Report Due".
+And nothing may silently delete a deadline: merges mark rows instead of
+removing them, there's a command to undo them, and anything dropped is
+printed by name.
 
-I only caught it because I read my own list and noticed labs were missing.
-No automatic test would have found it — the app was doing exactly what it
-was told.
+### 4. A missed scrape that never caught up
 
-**What I changed:** the section is pulled out and kept *before* the brackets
-are stripped, so A3 and A4 stay separate. And more importantly, the app now
-treats two entries as the same event based on course, date, time and lab
-section — **not on how they're worded** — because no amount of text-cleaning
-reconciles "Lab 1 Report Submission" with "Lab 1 Report Due".
+The timer was set to re-run a scrape it had missed while the Pi was off. That
+setting does nothing on the kind of timer I'd used, so a missed window was
+just skipped — silently, with no error anywhere.
 
-**The rule that came out of it:** nothing is allowed to silently delete a
-real deadline. Merges mark rows instead of deleting them, there's a command
-to undo them, and anything removed gets printed by name so I can see it.
-The bug was fixable; a system where that kind of bug is *invisible* is the
-actual problem.
-
-### 3. Tapping two cards quickly broke the app
-
-Tapping check on a card sometimes failed with "database is locked."
-
-The cause: when I checked a card, the app locked the database, then called
-Google to create the calendar event, and only released the lock once Google
-answered. Anything else I tapped during that second or two hit a locked
-database and failed.
-
-**What I changed:** the decision is saved and the lock released *first*, and
-the calendar event id is written back separately afterwards. The lesson
-generalises — don't hold a lock on something while you wait on a network.
+**Two smaller ones in the same family:** a three-minute scrape logged
+absolutely nothing under the Pi's scheduler, because Python holds back its
+output when nothing's watching. And a styling name collided with the card's
+evidence button — found only by taking a screenshot of the page and looking
+at it.
 
 ---
 
-## Questions I might get, and honest answers
+## One decision I'd want to be asked about
+
+The app can prepare work — gather the rubric, pull the relevant lecture
+material — and what it's allowed to do is set per course, in a plain-English
+file I edit myself, because the professor's policy is the professor's call.
+
+One rule sits above that file and isn't negotiable: **it never generates
+measured data, results or graphs.** Not a reading, not a trend, not a
+plausible-looking number in a table.
+
+The reason is simple: a fabricated measurement doesn't stay in a draft. It
+gets submitted.
+
+The vault has the same principle in a different place — a generated note is
+marked as generated, and the app refuses to overwrite any note that isn't. If
+I delete that one line, the note is mine forever. A rule that can silently
+destroy something I wrote isn't worth the convenience.
+
+---
+
+## Questions I might get
 
 **"Did you write this yourself?"**
 I built it with AI. I couldn't have written it from scratch. What I did was
-decide what it needed to do, and then check hard whether it actually did —
-which is where all three of those problems came from.
+decide what it needed to do and then check hard whether it actually did —
+which is where every problem above came from.
 
 **"So what did you actually contribute?"**
 The judgment. Testing two models against hand-checked syllabi instead of
 picking on price. Deciding a fabricated deadline is a worse failure than a
-missed one, and requiring every date to show its source sentence. Noticing
-two lab deadlines had disappeared when nothing flagged it.
+missed one. Noticing two lab deadlines had disappeared when nothing flagged
+it. Deciding the app must never invent a measurement.
 
 **"What's the hardest thing you learned?"**
 That the failure you have to design against isn't the one that throws an
-error — it's the one that looks like it worked. The lab deadlines didn't
-crash anything. The list just quietly got shorter.
+error — it's the one that looks like it worked. Renewal reported success
+without doing anything. The deadline list just quietly got shorter. Neither
+of those shows up unless someone checks the output against reality.
 
 **"Why not just use the Brightspace calendar?"**
 Because it's mostly empty. That gap is the entire reason the app exists.
 
 ---
 
-## What it does *not* do (don't claim these)
+## Honest limits (don't overclaim these)
 
-- It runs on my laptop, on demand. The always-on Raspberry Pi version is
-  designed and documented but **not built or deployed**.
-- No phone push notifications yet.
-- No Obsidian vault yet.
-- There are no automated tests committed.
-- One user, one term, a few thousand rows. It's a personal tool, not a
-  product.
+- **No push notifications yet** — I have to open the app.
+- **The web app has no login.** Tailscale is the only thing protecting it,
+  which is why it's not on the public internet.
+- **The heartbeat runs on the Pi**, so it can tell me a scrape failed but not
+  that the Pi is dead. That needs something outside the Pi.
+- **Stale dates from reused course shells.** Everything is filtered to the
+  current term, which is blunt — one course still shows assignments dated
+  2025 that may be this year's, shifted.
+- **No automated tests.**
+- **Built for one student.** Anyone else would need their own uOttawa login,
+  and it depends on a system the university controls and hasn't agreed to.
