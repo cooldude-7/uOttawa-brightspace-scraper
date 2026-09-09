@@ -44,6 +44,10 @@ def main():
         return
     print("  no, as expected. Walking the sign-on chain.\n")
 
+    collect.drop_d2l_session(client)
+    print("  dropped the expired Brightspace cookies first, so a stale one")
+    print("  cannot be mistaken for a fresh one.\n")
+
     r = client.get(f"{collect.BASE}/d2l/home")
     print(f"  GET /d2l/home -> {r.status_code}")
     for hop in r.history:
@@ -51,8 +55,8 @@ def main():
     print(f"       landed on {str(r.url)[:110]}")
 
     for i in range(1, 9):
-        if "d2lSessionVal" in client.cookies:
-            print("\n  got a Brightspace session cookie.")
+        if collect.session_works(client):
+            print("\n  the session answers an API call -- renewed.")
             break
         parser = collect.AutoForm()
         parser.feed(r.text)

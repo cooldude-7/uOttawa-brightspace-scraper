@@ -170,20 +170,41 @@ def make_client(jar):
     return client
 
 
+# The cookies Brightspace itself issues, as opposed to the sign-on cookies
+# that earn them. These are the short-lived half.
+D2L_SESSION_COOKIES = ("d2lSessionVal", "d2lSecureSessionVal",
+                       "d2lSameSiteCanaryA", "d2lSameSiteCanaryB")
+
+
+def drop_d2l_session(client):
+    """Throw away the expired Brightspace cookies before renewing.
+
+    They have to go, and not only for tidiness: an expired d2lSessionVal is
+    indistinguishable from a fresh one by name, so leaving it in the jar
+    once made renewal report success without doing anything at all.
+    """
+    for name in D2L_SESSION_COOKIES:
+        client.cookies.delete(name)
+
+
 def refresh_session(client):
     """Walk the sign-on redirect chain to earn a fresh Brightspace session.
 
     The identity provider still recognises its own cookies, so it issues a
     new assertion without asking for a password or a second factor. Returns
-    True if a Brightspace session cookie came back.
+    True if the session actually answers an API call afterwards -- asking
+    whether a cookie exists is not the same question, which is the bug this
+    signature used to have.
     """
+    drop_d2l_session(client)
+
     try:
         r = client.get(f"{BASE}/d2l/home")
     except Exception:
         return False
 
     for _ in range(8):
-        if "d2lSessionVal" in client.cookies:
+        if session_works(client):
             return True
         parser = AutoForm()
         try:
@@ -200,7 +221,7 @@ def refresh_session(client):
         except Exception:
             return False
 
-    return "d2lSessionVal" in client.cookies
+    return session_works(client)
 
 
 def session_works(client):
