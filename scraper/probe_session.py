@@ -65,9 +65,16 @@ def main():
             print(f"      form action : {parser.action!r}")
             print(f"      hidden fields: {sorted(parser.fields) or 'none'}")
             print(f"      page title   : {title_of(r.text)!r}")
-            print(f"      {len(r.text):,} bytes; first text on it:")
-            for line in visible_lines(r.text)[:12]:
-                print(f"        {line}")
+            print(f"      status       : {r.status_code}")
+            print(f"      content-type : {r.headers.get('content-type')}")
+            loc = r.headers.get("location")
+            if loc:
+                print(f"      location hdr : {loc[:200]}")
+            print(f"      {len(r.text):,} bytes. Raw body:")
+            print("      " + "-" * 60)
+            for line in r.text.splitlines()[:40]:
+                print(f"      | {line[:150]}")
+            print("      " + "-" * 60)
             break
         action = parser.action
         if action.startswith("/"):
@@ -79,6 +86,47 @@ def main():
 
     print(f"\nd2lSessionVal present: {'d2lSessionVal' in client.cookies}")
     print(f"session_works():       {collect.session_works(client)}")
+
+    entry_points(client)
+
+
+def entry_points(client):
+    """Where a browser would actually be sent to start signing in.
+
+    /d2l/home is where you land once you already have a session. Starting
+    a fresh one goes through a login endpoint, and which one D2L uses for
+    a SAML tenant is worth finding out rather than guessing.
+    """
+    print("\n" + "=" * 62)
+    print("  what the login entry points do (following redirects)")
+    print("=" * 62)
+    candidates = [
+        "/d2l/login",
+        "/d2l/lp/auth/login/login.d2l",
+        "/d2l/lp/auth/saml/initiate-login",
+        "/d2l/home",
+        "/d2l/lp/auth/login/ProcessLoginActions.d2l",
+    ]
+    for path in candidates:
+        fresh = collect.make_client(collect.read_session())
+        collect.drop_d2l_session(fresh)
+        try:
+            r = fresh.get(collect.BASE + path)
+        except Exception as e:
+            print(f"\n  {path}\n      error: {e!r}")
+            continue
+        print(f"\n  {path}  -> {r.status_code}, {len(r.text):,} bytes")
+        for hop in r.history:
+            print(f"      {hop.status_code} -> {str(hop.url)[:110]}")
+        print(f"      landed {str(r.url)[:110]}")
+        parser = collect.AutoForm()
+        try:
+            parser.feed(r.text)
+        except Exception:
+            pass
+        print(f"      form: {str(parser.action)[:90]}  fields: {sorted(parser.fields)}")
+        if collect.session_works(fresh):
+            print("      *** this one produced a WORKING session ***")
 
 
 def title_of(html):
