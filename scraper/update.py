@@ -57,6 +57,10 @@ def main():
     db.close()
 
 
+def plural(n):
+    return "" if n == 1 else "s"
+
+
 def scrape(argv):
     quiet = "--quiet" in argv
     started = time.time()
@@ -136,13 +140,22 @@ def scrape(argv):
     db.close()
 
     found = after["new"] + after["pending"] - before["new"] - before["pending"]
+    # Documents and announcements, counted separately from deadlines. A lecture
+    # posted with no date in it is still news -- it is a note in the vault and
+    # something to read. Reporting only deadlines made a scrape that picked up
+    # five new documents say "Nothing new since last time", which is both wrong
+    # and the kind of wrong that stops you trusting the tool.
+    added = after["documents"] - before["documents"]
     spent = after["spent"] - before["spent"]
     elapsed = int(time.time() - started)
 
     print("\n" + "=" * 62)
-    if found > 0:
-        print(f"  {found} new deadline{'s' if found != 1 else ''} found.")
-    else:
+    if found:
+        print(f"  {found} new deadline{plural(found)} found.")
+    if added:
+        print(f"  {added} new document{plural(added)} or announcement{plural(added)}"
+              f" -- now in the vault.")
+    if not found and not added:
         print("  Nothing new since last time.")
     print(f"  {after['new']} waiting, {after['pending']} not scheduled yet.")
     print(f"  Took {elapsed}s, cost ${spent:.4f} (${after['spent']:.2f} all time).")
