@@ -1,21 +1,24 @@
-# Every 30 minutes, which is the cadence PLAN.md settled on: often enough
-# that a deadline posted at 2am is known by breakfast, gentle enough to stay
-# within anything Brightspace could reasonably object to.
+# Once an hour, 07:00 to 21:00. Fifteen checks a day instead of the
+# forty-eight that every-30-minutes-round-the-clock produced.
+#
+# The original cadence was chosen so a deadline posted at 2am was known by
+# breakfast. In practice nothing is posted at 3am, and the runs through the
+# night cost money and Brightspace requests to discover that nothing had
+# changed. A deadline appearing at 21:30 is now picked up at 07:00, which is
+# still before anyone would have acted on it.
 
 [Unit]
-Description=Check Brightspace every 30 minutes
+Description=Check Brightspace hourly through the day
 
 [Timer]
-# On the half hour. Calendar rather than "30 minutes after the last run",
-# because Persistent= below only works with a calendar schedule.
-OnCalendar=*:0/30
+OnCalendar=*-*-* 07..21:00:00
 
-# Do not land on :00 and :30 exactly. Nothing depends on the precise minute,
-# and an unpredictable one looks less like a machine hammering the server.
-RandomizedDelaySec=120
+# Do not land exactly on the hour. Nothing depends on the precise minute, and
+# an unpredictable one looks less like a machine hammering the server.
+RandomizedDelaySec=180
 
 # If the Pi was off over a window, run once when it comes back rather than
-# silently skipping to the next half hour.
+# silently skipping to the next hour.
 Persistent=true
 
 Unit=brightspace-update.service

@@ -101,6 +101,18 @@ DATED ITEMS -- these are the only anchors you may choose from:
 
 
 def undated_tasks(db, course_id, relink=False):
+    """Tasks still worth asking about.
+
+    A task that has been considered and has no anchor is marked with an empty
+    linked_to, so it is not asked about again. Without that, "join a
+    competitive team (optional)" -- which will never anchor to anything -- went
+    back to the API every thirty minutes at about a penny a time. That is
+    roughly $18 a month to be told the same nothing, on a project whose whole
+    budget is a few dollars a term.
+
+    --relink drops the marks and reconsiders everything, which is what to run
+    after a course gains dates it did not have before.
+    """
     extra = "" if relink else " AND linked_to IS NULL"
     return db.execute(
         f"""SELECT id, title, source_excerpt FROM dates
@@ -149,6 +161,14 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     relink = "--relink" in argv
     dry = "--dry-run" in argv
+    if relink and not dry:
+        db0 = store.connect()
+        cleared = db0.execute(
+            "UPDATE dates SET linked_to = NULL WHERE linked_to = ''").rowcount
+        db0.commit()
+        db0.close()
+        if cleared:
+            print(f"  reconsidering {cleared} task(s) previously left undated")
 
     key = find_dates.api_key()
     client = anthropic.Anthropic(api_key=key)
@@ -230,6 +250,13 @@ def main(argv=None):
             if task["id"] not in got:
                 print(f"  --          {task['title'][:40]:<42} left undated")
                 skipped += 1
+                if not dry:
+                    # Considered, no anchor. Empty rather than NULL so the next
+                    # run skips it -- and still falsy everywhere it is read, so
+                    # no card grows a "before ..." badge from this.
+                    db.execute(
+                        "UPDATE dates SET linked_to = '' WHERE id = ? "
+                        "AND linked_to IS NULL", (task["id"],))
 
     if not dry:
         store.finish_run(db, run_id, 0, 0, linked, spent)

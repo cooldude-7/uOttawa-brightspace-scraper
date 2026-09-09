@@ -118,6 +118,12 @@ work; the Pi only ever runs `incremental_scrape`, which fetches small JSON diffs
 - `httpx` — the entire Brightspace client
 - `sqlite3` — **not Postgres**. Postgres would run on 1 GB but earns nothing here: one
   writer, a few thousand rows, no real concurrency
+- **Cadence revised 2026-09-08: hourly, 07:00–21:00,** not every 30 minutes round
+  the clock. The original reasoning — a deadline posted at 2am is known by breakfast —
+  did not survive contact: nothing is posted at 3am, and the overnight runs spent money
+  and Brightspace requests to establish that nothing had changed. 48 runs a day became
+  15. Something appearing at 21:30 is picked up at 07:00, before anyone would have acted
+  on it either way.
 - ~~`apscheduler`~~ — **revised 2026-09-08: a systemd timer instead.** Not installed. The
   Pi already runs systemd, so a timer is one file and no dependency, and it buys two things
   APScheduler inside the app cannot: a scrape that hangs or crashes cannot take the web app
