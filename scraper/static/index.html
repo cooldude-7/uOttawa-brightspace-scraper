@@ -227,6 +227,32 @@
                      border-left: 3px solid var(--line); color: var(--muted); }
   /* Wide tables scroll rather than squeezing the page sideways. */
   .vnote > * { max-width: 100%; }
+  /* One conversation per course. Deliberately spare -- it is read on a
+     phone, often standing up. */
+  .msg { margin: 9px 12px; font-size: 14px; line-height: 1.55; }
+  .msg.you { background: var(--accent); color: #fff; margin-left: 56px;
+             padding: 9px 12px; border-radius: 13px 13px 3px 13px; }
+  .msg.them { background: var(--card); border: 1px solid var(--line);
+              margin-right: 24px; padding: 11px 13px;
+              border-radius: 13px 13px 13px 3px; white-space: pre-wrap; }
+  .msg.them table { border-collapse: collapse; font-size: 13px; display: block;
+                    width: max-content; max-width: 100%; overflow-x: auto; }
+  .msg.them th, .msg.them td { border: 1px solid var(--line); padding: 4px 6px; }
+  .askbar { position: sticky; bottom: 0; background: var(--bg);
+            padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+            border-top: 1px solid var(--line); display: flex; gap: 8px; }
+  .askbar textarea {
+    flex: 1; font: inherit; font-size: 15px; padding: 9px 11px; resize: none;
+    border: 1px solid var(--line); border-radius: 11px; background: var(--card);
+    color: var(--ink); max-height: 120px;
+  }
+  .askbar button {
+    background: var(--accent); color: #fff; border: none; border-radius: 11px;
+    padding: 0 15px; font: inherit; font-weight: 650; cursor: pointer;
+  }
+  .askbar button:disabled { opacity: .45; }
+  .asknote { text-align: center; color: var(--muted); font-size: 11.5px;
+             padding: 4px 12px 0; }
   .noteitem { display: block; width: 100%; text-align: left; background: var(--card);
               border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px;
               margin: 7px 12px; font: inherit; font-size: 14px; cursor: pointer; }
@@ -259,6 +285,7 @@
   <div class="tabs" id="modes">
     <button aria-pressed="true"  onclick="setMode('cards')">Deadlines</button>
     <button aria-pressed="false" onclick="setMode('notes')">Notes</button>
+    <button aria-pressed="false" onclick="setMode('ask')">Ask</button>
   </div>
   <div class="tabs" id="tabs"></div>
 </header>
@@ -307,8 +334,8 @@ function setStatus(s) { status = s; course = 'all'; load(); }
 function renderFilters() {
   // Chips carry the course's real name, not its code -- the code is on the
   // card itself, and a filter you cannot read is not a filter.
-  const chips = [['all', 'All courses'],
-                 ...COURSES.map(c => [c.value, c.name || c.code])];
+  const chips = (MODE === 'ask' ? [] : [['all', 'All courses']]).concat(
+    COURSES.map(c => [c.value, c.name || c.code]));
   const el = document.getElementById('filters');
   el.innerHTML = chips.map(([v, label]) =>
     `<button class="chip" data-course="${esc(v)}" aria-pressed="${course === v}"
@@ -320,20 +347,27 @@ const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':
 
 function setCourse(c) {
   course = c; renderFilters();
-  if (MODE === 'notes') renderNotes(); else render();
+  if (MODE === 'notes') renderNotes();
+  else if (MODE === 'ask') loadChat();
+  else render();
 }
 
 // ------------------------------------------------------------------ notes
 
 let MODE = 'cards', NOTES = [], OPEN = null;
 
+const MODES = ['cards', 'notes', 'ask'];
+const TITLES = { cards: 'Deadlines', notes: 'Notes', ask: 'Ask' };
+
 function setMode(m) {
   MODE = m; OPEN = null;
   document.querySelectorAll('#modes button').forEach((b, i) =>
-    b.setAttribute('aria-pressed', (i === 0) === (m === 'cards')));
-  document.getElementById('heading').textContent = m === 'cards' ? 'Deadlines' : 'Notes';
+    b.setAttribute('aria-pressed', MODES[i] === m));
+  document.getElementById('heading').textContent = TITLES[m];
   document.getElementById('tabs').style.display = m === 'cards' ? '' : 'none';
-  if (m === 'notes') loadNotes(); else load();
+  if (m === 'notes') loadNotes();
+  else if (m === 'ask') loadChat();
+  else load();
 }
 
 async function loadNotes() {
@@ -388,6 +422,76 @@ async function openNote(path) {
 }
 
 function closeNote() { OPEN = null; renderNotes(); }
+
+// -------------------------------------------------------------------- ask
+
+let CHAT = [], CHAT_SPENT = 0, ASKING = false;
+
+async function loadChat() {
+  // Ask needs every course, not only the ones with a card waiting.
+  if (!COURSES.length || MODE !== 'ask') {
+    const c = await api('/api/courses');
+    COURSES = c.courses;
+  }
+  if (course === 'all' && COURSES.length) course = COURSES[0].value;
+  renderFilters();
+  const data = await api('/api/chat?course=' + encodeURIComponent(course));
+  CHAT = data.messages; CHAT_SPENT = data.spent;
+  document.getElementById('stats').textContent =
+    `Ask ${course} — $${CHAT_SPENT.toFixed(2)} spent on this course`;
+  renderChat();
+}
+
+function renderChat() {
+  const list = document.getElementById('list');
+  const body = CHAT.length
+    ? CHAT.map(m => `<div class="msg ${m.role === 'user' ? 'you' : 'them'}">${
+        esc(m.text)}</div>`).join('')
+    : `<div class="empty">Ask anything about ${esc(course)}.<br>
+         Its lectures, syllabus and your deadlines are already loaded.</div>`;
+  list.innerHTML = body + `
+    <div class="asknote" id="asknote">${ASKING ? 'thinking…' : ''}</div>
+    <div class="askbar">
+      <textarea id="q" rows="1" placeholder="Ask about ${esc(course)}…"
+        ${ASKING ? 'disabled' : ''}></textarea>
+      <button id="send" onclick="send()" ${ASKING ? 'disabled' : ''}>Ask</button>
+    </div>`;
+  const q = document.getElementById('q');
+  if (q) {
+    q.addEventListener('input', () => {
+      q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 120) + 'px';
+    });
+    // Enter sends, shift+enter makes a new line -- the phone keyboard's
+    // return key is the obvious way to send.
+    q.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    });
+  }
+  window.scrollTo(0, document.body.scrollHeight);
+}
+
+async function send() {
+  const q = document.getElementById('q');
+  const text = (q && q.value || '').trim();
+  if (!text || ASKING) return;
+  CHAT.push({ role: 'user', text });
+  ASKING = true; renderChat();
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ course, message: text }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'failed');
+    CHAT.push({ role: 'assistant', text: data.reply });
+    CHAT_SPENT = data.spent;
+    document.getElementById('stats').textContent =
+      `Ask ${course} — $${CHAT_SPENT.toFixed(2)} spent on this course`;
+  } catch (e) {
+    CHAT.push({ role: 'assistant', text: 'Could not answer: ' + e.message });
+  }
+  ASKING = false; renderChat();
+}
 
 function bucket(card) {
   if (card.pending || card.days === null) return 'No date yet';

@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import chat
 import gcal
 import paths
 import store
@@ -37,6 +38,11 @@ app = FastAPI(title="Brightspace deadlines")
 class Decision(BaseModel):
     id: int
     status: str
+
+
+class Question(BaseModel):
+    course: str
+    message: str
 
 
 def days_until(due):
@@ -238,6 +244,76 @@ def vault_note(path: str):
         # Readable without it, just unformatted. Better than a 500.
         html = "<pre>" + body.replace("&", "&amp;").replace("<", "&lt;") + "</pre>"
     return {"title": f.stem.lstrip("_"), "html": html, "path": path}
+
+
+# ------------------------------------------------------------------- asking
+
+@app.get("/api/chat")
+def chat_history(course: str):
+    db = store.connect()
+    try:
+        row = chat.course_row(db, course)
+        if row is None:
+            raise HTTPException(404, "no such course")
+        return {
+            "course": store.course_parts(row["name"])["code"],
+            "messages": [{"role": m["role"], "text": m["text"]}
+                         for m in chat.history(db, row["id"])],
+            "spent": round(chat.spent(db, row["id"]), 4),
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/chat")
+def chat_ask(q: Question):
+    db = store.connect()
+    try:
+        row = chat.course_row(db, q.course)
+        if row is None:
+            raise HTTPException(404, "no such course")
+        text = (q.message or "").strip()
+        if not text:
+            raise HTTPException(400, "nothing to ask")
+        try:
+            reply, cost = chat.ask(db, row, text)
+        except Exception as e:
+            # Surface it rather than a bare 500 -- on a phone the only clue
+            # otherwise is a spinner that stops.
+            raise HTTPException(502, f"{type(e).__name__}: {e}")
+        return {"reply": reply, "cost": round(cost, 4),
+                "spent": round(chat.spent(db, row["id"]), 4)}
+    finally:
+        db.close()
+
+
+@app.delete("/api/chat")
+def chat_clear(course: str):
+    db = store.connect()
+    try:
+        row = chat.course_row(db, course)
+        if row is None:
+            raise HTTPException(404, "no such course")
+        n = db.execute("DELETE FROM chats WHERE course_id = ?", (row["id"],)).rowcount
+        db.commit()
+        return {"cleared": n}
+    finally:
+        db.close()
+
+
+@app.get("/api/courses")
+def course_list():
+    """Every course, for the Ask tab -- which needs them all, not just the
+    ones that happen to have a card waiting."""
+    db = store.connect()
+    try:
+        out = []
+        for row in db.execute("SELECT * FROM courses ORDER BY name"):
+            p = store.course_parts(row["name"])
+            out.append({"value": p["code"], "code": p["code"], "name": p["title"]})
+        return {"courses": out}
+    finally:
+        db.close()
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
