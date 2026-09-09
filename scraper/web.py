@@ -245,7 +245,19 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    # Never let the phone hold on to an old copy of the page. An iOS home
+    # screen app caches hard, and after an update the user is looking at
+    # yesterday's app with no way to tell -- which is worse than a slow load,
+    # especially when the change was to stop hiding something.
+    #
+    # no-store rather than no-cache: no-cache still permits a stored copy to
+    # be revalidated, and Safari has been happy to serve that copy when the
+    # network is briefly unavailable. The page is a few KB over Tailscale.
+    return FileResponse(STATIC / "index.html", headers={
+        "Cache-Control": "no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    })
 
 
 def my_address():
