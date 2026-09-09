@@ -375,6 +375,18 @@ def build(dry=False):
         lines.append("_Nothing upcoming._")
     write(root / "Dashboards" / "Upcoming.md", "\n".join(lines) + "\n", dry, report)
 
+    # Written with LF by the Pi, checked out on Windows, and git's automatic
+    # CRLF conversion then reports every note as locally modified on a fresh
+    # clone -- so the first `git pull` refuses to run. Obsidian is happy with
+    # LF on Windows, so the simplest fix is to stop the conversion happening.
+    attrs = root / ".gitattributes"
+    if not dry and not attrs.exists():
+        attrs.write_text(
+            "# The Pi writes these with LF. Without this, git on Windows\n"
+            "# rewrites them to CRLF on checkout and every note shows as\n"
+            "# modified before it has been opened, which blocks the next pull.\n"
+            "* text eol=lf\n", encoding="utf-8")
+
     skills_mod.seed(root / "Skills", dry, report)
     db.close()
 
