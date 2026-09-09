@@ -81,9 +81,8 @@ without me.
 
 **Obsidian vault** — every document, announcement and assignment is also
 written out as organised notes, one folder per course, pushed to a private
-GitHub repo on every run. *(The push is wired into every run, but whether the
-Pi's key is actually installed is a manual setup step — check it on the Pi
-before saying the vault syncs from there.)* It doubles as a searchable archive and as
+GitHub repo on every run. *(Verified on the Pi 2026-09-09: the deploy key
+authenticates and the vault is in sync with `obsidian-brain`.)* It doubles as a searchable archive and as
 per-course files I can load into Claude Projects to ask questions about my
 own coursework.
 
