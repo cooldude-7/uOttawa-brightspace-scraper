@@ -123,7 +123,7 @@
     border-radius: var(--radius); padding: 11px 12px; margin-bottom: 9px;
     display: grid; grid-template-columns: auto 1fr minmax(150px, 300px) auto;
     gap: 13px; align-items: center;
-    transition: opacity .18s, transform .18s;
+    will-change: transform;
   }
 
   /* Wide enough to spare the room: the quote sits in its own column
@@ -149,7 +149,6 @@
     .card { grid-template-columns: auto 1fr; gap: 10px; }
     .card .actions { grid-column: 2; grid-row: 2; justify-self: end; }
   }
-  .card.going { opacity: 0; transform: translateX(28px); }
 
   /* The date is the thing being scanned for, so it reads first: a block
      of its own, sized and coloured by how soon it is. */
@@ -212,6 +211,7 @@
     font-family: inherit; display: grid; place-items: center;
   }
   .actions .yes { background: var(--yes-bg); color: var(--yes); border-color: transparent; }
+  .actions button { transition: transform 100ms ease-out; }
   .actions button:active { transform: scale(.92); }
 
   /* The vault, read on a phone. Called .vnote, not .note: .note is
@@ -665,8 +665,11 @@ async function decide(id, newStatus) {
   const drop = () => { CARDS = CARDS.filter(c => c.id !== id); render(); };
 
   // Remove it locally straight away; a tap should never wait on the network.
-  if (el && el.classList.contains('ag-row')) collapseRow(el, drop);
-  else { if (el) el.classList.add('going'); setTimeout(drop, 180); }
+  // A card leaves in the direction of the decision -- kept goes right,
+  // dismissed goes left, put back goes right -- and the gap closes behind it.
+  if (!el) drop();
+  else if (el.classList.contains('ag-row')) collapseRow(el, drop);
+  else slideOut(el, newStatus === 'dismissed' ? -1 : 1, drop);
   const reply = await api('/api/decide', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({id, status: newStatus})
@@ -834,11 +837,28 @@ function agRow(c) {
     </div></div>`;
 }
 
+function slideOut(el, dir, done) {
+  const w = el.offsetWidth, x = new Spring(0, { response: 0.36 });
+  // A tap carried no momentum, so no bounce -- but the card should still
+  // leave briskly rather than drift, hence a starting velocity.
+  x.retarget(dir * w * 1.1, { velocity: dir * 1000 });
+  drive(x, () => {
+    el.style.transform = `translateX(${x.x}px)`;
+    el.style.opacity = Math.max(0, 1 - Math.abs(x.x) / (w * 0.85));
+  }, () => collapseRow(el, done));
+}
+
 function collapseRow(el, done) {
-  const h0 = el.offsetHeight, h = new Spring(h0, { response: 0.3, eps: 0.3 });
-  el.style.height = h0 + 'px'; el.style.overflow = 'hidden';
+  const h0 = el.offsetHeight, mb = parseFloat(getComputedStyle(el).marginBottom) || 0;
+  const h = new Spring(h0, { response: 0.3, eps: 0.3 });
+  el.style.height = h0 + 'px'; el.style.overflow = 'hidden'; el.style.padding = '0';
+  el.style.border = '0'; el.style.boxSizing = 'border-box';
   h.retarget(0);
-  drive(h, () => { el.style.height = h.x + 'px'; el.style.opacity = Math.max(0, h.x / h0); }, done);
+  drive(h, () => {
+    const p = h.x / h0;
+    el.style.height = h.x + 'px'; el.style.marginBottom = (mb * p) + 'px';
+    el.style.opacity = Math.min(el.style.opacity === '' ? 1 : +el.style.opacity, Math.max(0, p));
+  }, done);
 }
 
 // ------------------------------------------------------------- the sheet
