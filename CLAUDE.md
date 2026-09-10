@@ -80,14 +80,34 @@ group the user is in, left a self-correction in the finished page, and named
 Thursday 17 September as "Wed 17 Sep". All three fixed; the weekday one by
 computing weekdays in Python and forbidding the model from deriving its own.
 
+**The heartbeat is built** (2026-09-09). The `runs` table existed but nothing
+wrote to it, so a dead scrape and a quiet week were indistinguishable — the
+list simply stopped growing. `update.py` now records every run either way
+(catching `BaseException`, because `get_client()` raises `SystemExit` when a
+login is needed and that is the failure most worth recording), `/api/health`
+reports the age of the last clean run, and the app's header turns into a
+warning past three hours — but only inside the 07:00–21:00 window, since the
+overnight gap is the schedule working. Note the limit: it runs *on* the Pi, so
+it catches a failing scrape while the Pi is alive. A Pi that is off cannot
+serve the page at all, which is its own, louder signal.
+
+**The vault syncs.** `vault.py --push` pushes to the private `obsidian-brain`
+repo on every scrape, pulling and rebasing first so the laptop can write too.
+The Mac and the laptop both hold clones; Obsidian's Git plugin pulls every
+five minutes so neither needs a command.
+
+**The app has three views**: the deadline cards, **Agenda** (the term laid out
+by day, with ✓/✕ on each row and a drag-to-dismiss detail sheet), and Notes.
+Agenda and the card exit animations are built on springs — see the physics
+block in `static/index.html`, distilled from Apple's *Designing Fluid
+Interfaces*. Cards leave in the direction of the decision.
+
 Not built yet:
 - **Push notifications.** Nothing tells you a deadline appeared; you have to
   open the app. Web push needs a secure context — worth testing whether
   Tailscale's `*.ts.net` certificates satisfy that before buying a domain.
-- **A heartbeat.** Nothing tells you the Pi has stopped, either. This matters
-  more now that it is being trusted.
-- **The vault is not synced yet.** `obsidian-brain` exists as a private repo;
-  the deploy key and `vault.py --push` are `docs/pi-setup.md` Part 4, not done.
+- **An off-Pi dead-man's switch.** The heartbeat above cannot report a Pi that
+  is fully dead. Something outside the Pi would have to notice the silence.
 
 ## Commands
 
