@@ -250,6 +250,15 @@ def ask(client, model, course, doc, text, window=(None, None)):
             print(f"    dropped invented date {when} ({d.get('title','')[:40]})")
             continue
 
+        # A year the professor mistyped -- declared per course in me.json,
+        # never guessed. The syllabus that says 2025 is the same document
+        # the Brightspace fields were filled in from, so the correction has
+        # to reach both or half the course's deadlines still vanish.
+        fixed, why = store.fix_year(course, when)
+        if why:
+            print(f"    {when} -> {fixed} ({d.get('title','')[:34]}) -- {why[:60]}")
+            when = d["date"] = fixed
+
         # Content folders get reused between offerings, so a stale schedule
         # from a previous term is a real and dangerous failure mode.
         if start and not (start <= when <= end):

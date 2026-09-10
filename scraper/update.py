@@ -91,10 +91,14 @@ def scrape(argv):
     collected = json.loads(paths.COLLECTED.read_text(encoding="utf-8"))
     window = find_dates.term_window(find_dates.current_term())
     db = store.connect()
-    got, dropped = exact.load(db, collected, window)
+    got, dropped, shifted = exact.load(db, collected, window)
     db.commit()
     db.close()
     print(f"  {got} stored" + (f", {len(dropped)} outside this term:" if dropped else ""))
+    for course, title, was, now in shifted:
+        print(f"      {was} -> {now}  {course:<26} {str(title)[:34]}")
+    if shifted:
+        print("      (a year you corrected in me.json -- say if one of these is wrong)")
     for course, title, due in dropped:
         print(f"      {due}  {course:<26} {str(title)[:34]}")
     if dropped:

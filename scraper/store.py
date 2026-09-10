@@ -69,6 +69,46 @@ def load_prefs():
 def save_prefs(prefs):
     PREFS_PATH.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
 
+
+def fix_year(course_name, when):
+    """Apply a year typo you have declared for one course. -> (date, why|None).
+
+    A professor can type the wrong year, in the syllabus and in Brightspace's
+    own due-date fields alike, and then every one of those deadlines looks
+    exactly like a leftover from the previous offering and gets dropped.
+    MCG2130's eight assignments were dated 2025 for this reason; the
+    professor said so in class.
+
+    This is deliberately not the heuristic it is tempting to write. "A year
+    off, so shift it" would also rewrite the genuinely stale dates a reused
+    course shell carries -- and those are real, and are meant to be dropped.
+    So the correction is per course, names both years, and only ever comes
+    from `me.json`, where the student wrote it down after checking:
+
+        "year_typos": {
+          "MCG2130": {"wrong": 2025, "right": 2026, "why": "..."}
+        }
+
+    Every shifted date is printed by its caller, for the same reason dropped
+    ones are: a rule that quietly moves a deadline is the failure this
+    project exists to prevent.
+    """
+    typos = load_prefs().get("year_typos") or {}
+    if not typos or not when or len(when) < 4:
+        return when, None
+    code = course_parts(course_name)["code"]
+    rule = typos.get(code) or typos.get(code.upper())
+    if not rule:
+        return when, None
+    try:
+        wrong, right = int(rule["wrong"]), int(rule["right"])
+    except (KeyError, TypeError, ValueError):
+        return when, None
+    if not when.startswith(f"{wrong}-"):
+        return when, None
+    fixed = f"{right}{when[4:]}"
+    return fixed, (rule.get("why") or f"{code}: dated {wrong}, corrected to {right}.")
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS courses (
     id          INTEGER PRIMARY KEY,
@@ -574,6 +614,24 @@ def summary(db):
 
 if __name__ == "__main__":
     import sys
+
+    # python store.py --year-typo MCG2130 2025 2026 "the prof mistyped it"
+    if "--year-typo" in sys.argv:
+        i = sys.argv.index("--year-typo")
+        try:
+            code, wrong, right = sys.argv[i + 1], int(sys.argv[i + 2]), int(sys.argv[i + 3])
+        except (IndexError, ValueError):
+            sys.exit("usage: python store.py --year-typo CODE WRONGYEAR RIGHTYEAR [\"why\"]")
+        why = sys.argv[i + 4] if len(sys.argv) > i + 4 else ""
+        prefs = load_prefs()
+        prefs.setdefault("year_typos", {})[code.upper()] = {
+            "wrong": wrong, "right": right,
+            "why": why or f"{code.upper()} dates were typed as {wrong}; they are {right}."}
+        save_prefs(prefs)
+        print(f"  {code.upper()}: dates in {wrong} will be read as {right}.")
+        print(f"  Written to {PREFS_PATH} -- delete the entry there to undo it.")
+        print("  Run  python update.py  to pick the deadlines up.")
+        sys.exit(0)
 
     db = connect()
     if "--restore" in sys.argv:

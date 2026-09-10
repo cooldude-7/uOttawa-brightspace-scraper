@@ -102,6 +102,7 @@ python gcal.py --prune     drop other sections' deadlines already accepted
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
+python store.py --year-typo MCG2130 2025 2026    a year the prof mistyped
 python vault.py            build the Obsidian vault (no API cost)
 python vault.py --bundle   one file per course, to upload to a Claude Project
 python prep.py --list      work waiting to be prepared, with ids
@@ -182,6 +183,15 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 - **Course shells are reused between terms.** Stale dates from previous
   offerings appear in folder text *and* in Brightspace's own due-date fields —
   one assignment still says June. Everything is filtered to the term window.
+- **A professor can type the wrong year, and it looks identical to a stale
+  shell.** MCG2130's eight assignments were dated 2025 in the syllabus *and*
+  in Brightspace's due-date fields; the professor said in class that the
+  syllabus was mistyped. The term filter dropped all eight. `store.fix_year()`
+  corrects it, but only per course and only from `me.json` — never as a
+  "looks a year off, shift it" heuristic, because that would also rewrite the
+  genuinely stale dates a reused shell carries, and those are meant to be
+  dropped. Set one with `python store.py --year-typo MCG2130 2025 2026`.
+  Every shifted date is printed on every scrape, like every dropped one.
 - **Section-specific deadlines.** One assignment lists five different dates
   for lab sections A1–A5. The section marker is part of an event's identity,
   or A2 and A5 collapse into one. The user is **A4** in GNG2101, established by

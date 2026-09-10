@@ -79,15 +79,18 @@ def entries(course):
 
 
 def load(db, collected, window=(None, None)):
-    """Store them. Returns (added, [(course, title, date) dropped as stale]).
+    """Store them. -> (added, dropped, shifted), the last two as
+    [(course, title, date)] and [(course, title, was, now)].
 
-    Dropped items are returned rather than counted, because a rule that
-    silently discards deadlines is exactly the failure this project exists
-    to prevent -- if it ever drops a real one, it has to be visible.
+    Dropped and shifted items are returned rather than counted, because a
+    rule that silently discards -- or silently moves -- a deadline is
+    exactly the failure this project exists to prevent. If it ever touches
+    a real one, it has to be visible.
     """
     start, end = window
     added = 0
     dropped = []
+    shifted = []
 
     for course in collected:
         course_id = store.upsert_course(
@@ -108,6 +111,14 @@ def load(db, collected, window=(None, None)):
             if not due:
                 continue
 
+            # A year the professor mistyped, in a course you have said so
+            # about in me.json. Without this the date below looks exactly
+            # like a leftover and is dropped.
+            fixed, why = store.fix_year(course["name"], due)
+            if why:
+                shifted.append((course["name"][:26], title, due, fixed))
+                due, note = fixed, f"{note} {why}"
+
             # A course shell reused between terms keeps its old due dates --
             # one GNG2101 assignment still says June. Storing that would put
             # a deadline months in the past on the list.
@@ -124,4 +135,4 @@ def load(db, collected, window=(None, None)):
                 "source_excerpt": note,
             }])
 
-    return added, dropped
+    return added, dropped, shifted
