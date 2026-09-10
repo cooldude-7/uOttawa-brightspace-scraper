@@ -43,6 +43,7 @@
     --soon: #8a6100; --soon-bg: #fbf1d4;
     --mid: #1d4ed8;  --mid-bg: #e6edfd;
     --radius: 14px;
+    --card-rgb: 255, 255, 255;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -53,6 +54,7 @@
       --now: #ffa964;  --now-bg: #33251a;
       --soon: #e8c25c; --soon-bg: #2f2a19;
       --mid: #8fb6ff;  --mid-bg: #1b2436;
+      --card-rgb: 23, 27, 34;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -169,12 +171,12 @@
   .date.none .dnum { font-size: 13px; font-weight: 650; }
 
   /* Urgency palette -- red past due, orange now, amber this week. */
-  .card[data-urgency="past"] { --chip-bg: var(--past-bg); --chip-ink: var(--past); }
-  .card[data-urgency="now"]  { --chip-bg: var(--now-bg);  --chip-ink: var(--now); }
-  .card[data-urgency="soon"] { --chip-bg: var(--soon-bg); --chip-ink: var(--soon); }
-  .card[data-urgency="mid"]  { --chip-bg: var(--mid-bg);  --chip-ink: var(--mid); }
-  .card[data-urgency="far"]  { --chip-bg: var(--no-bg);   --chip-ink: var(--muted); }
-  .card[data-urgency="none"] { --chip-bg: transparent;    --chip-ink: var(--muted); }
+  .card[data-urgency="past"], .ag-row[data-urgency="past"], .sheet[data-urgency="past"] { --chip-bg: var(--past-bg); --chip-ink: var(--past); }
+  .card[data-urgency="now"], .ag-row[data-urgency="now"], .sheet[data-urgency="now"]  { --chip-bg: var(--now-bg);  --chip-ink: var(--now); }
+  .card[data-urgency="soon"], .ag-row[data-urgency="soon"], .sheet[data-urgency="soon"] { --chip-bg: var(--soon-bg); --chip-ink: var(--soon); }
+  .card[data-urgency="mid"], .ag-row[data-urgency="mid"], .sheet[data-urgency="mid"]  { --chip-bg: var(--mid-bg);  --chip-ink: var(--mid); }
+  .card[data-urgency="far"], .ag-row[data-urgency="far"], .sheet[data-urgency="far"]  { --chip-bg: var(--no-bg);   --chip-ink: var(--muted); }
+  .card[data-urgency="none"], .ag-row[data-urgency="none"], .sheet[data-urgency="none"] { --chip-bg: transparent;    --chip-ink: var(--muted); }
 
   .title { font-size: 15px; font-weight: 600; margin: 0 0 4px; line-height: 1.3; }
   .tags { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
@@ -258,6 +260,94 @@
     background: none; border: none; color: var(--bg); font-weight: 650;
     text-decoration: underline; cursor: pointer; font-size: 13.5px; font-family: inherit;
   }
+
+  /* ---------------------------------------------------------- agenda
+     The week as a spine. Rows keep the card's urgency colour as a stripe
+     and a tick to keep. All names are ag-*, because .note once collided
+     with the vault and cost an afternoon. */
+  .agenda { list-style: none; margin: 0; padding: 0 0 0 2px; position: relative; }
+  .agenda::before { content: ""; position: absolute; left: 21px; top: 8px; bottom: 8px; width: 1px; background: var(--line); }
+  .ag-month {
+    position: relative; font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); font-weight: 600; margin: 18px 0 10px 56px;
+  }
+  .ag-month:first-child { margin-top: 4px; }
+  .ag-day { display: grid; grid-template-columns: 44px 1fr; gap: 12px; margin-bottom: 12px; position: relative; }
+  .ag-date {
+    display: grid; justify-items: center; align-content: start; padding-top: 4px;
+    position: relative; z-index: 1; font-variant-numeric: tabular-nums;
+  }
+  .ag-date .dow { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; color: var(--muted); height: 13px; }
+  .ag-date .num {
+    font-size: 19px; font-weight: 700; letter-spacing: -0.02em; width: 40px; height: 40px;
+    display: grid; place-items: center; border-radius: 50%; background: var(--bg); color: var(--ink);
+    margin-top: 2px; box-shadow: 0 0 0 4px var(--bg);
+  }
+  .ag-day.today .ag-date .num { background: var(--ink); color: var(--bg); }
+  .ag-day.none .ag-date .num { box-shadow: inset 0 0 0 1px var(--line), 0 0 0 4px var(--bg); color: var(--muted); }
+  .ag-items { display: grid; gap: 6px; min-width: 0; }
+  .ag-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; min-width: 0; }
+  .ag-item {
+    text-align: left; width: 100%; min-width: 0; border: 1px solid var(--line); background: var(--card);
+    border-radius: 13px; padding: 10px 12px 10px 15px; cursor: pointer; font: inherit; color: inherit;
+    display: grid; gap: 3px; position: relative; overflow: hidden; transition: transform 100ms ease-out;
+  }
+  .ag-item::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--chip-ink, var(--line)); }
+  .ag-item:active { transform: scale(.985); }
+  .ag-item .ttl { font-size: 14.5px; font-weight: 600; line-height: 1.25; }
+  .ag-item .sub { font-size: 11.5px; color: var(--muted); display: flex; column-gap: 8px; row-gap: 2px; flex-wrap: wrap; }
+  .ag-item .sub b { color: var(--chip-ink, var(--ink)); font-weight: 650; }
+  .ag-item .sub .linked { color: var(--accent); }
+  .ag-item .sub .unsure { color: var(--soon); }
+  .ag-acts { display: flex; gap: 6px; }
+  /* 44px: Apple's minimum for a thumb. The row grows to fit it. */
+  .ag-acts button {
+    width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--card);
+    color: var(--no); cursor: pointer; padding: 0; display: grid; place-items: center;
+    transition: transform 100ms ease-out; will-change: transform;
+  }
+  .ag-acts button:active { transform: scale(.9); }
+  .ag-acts .ak { color: var(--yes); background: var(--yes-bg); border-color: transparent; }
+  .ag-acts svg { width: 18px; height: 18px; }
+
+  /* The detail sheet: a real surface with three resting heights. Content
+     stays put behind it -- this page scrolls the document, not a stage. */
+  .scrim { position: fixed; inset: 0; background: #000; opacity: 0; z-index: 30; pointer-events: none; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; height: 90vh; max-width: 720px; margin: 0 auto;
+    border-radius: 22px 22px 0 0; touch-action: none; will-change: transform; transform: translateY(100%);
+    visibility: hidden;
+    background: rgba(var(--card-rgb), .86);
+    -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+    box-shadow: 0 -1px 0 rgba(255,255,255,.35) inset, 0 -8px 40px rgba(0,0,0,.25);
+    padding: 8px 18px calc(20px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 10px; user-select: none; -webkit-user-select: none;
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .sheet { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  }
+  .sheet .grip { width: 36px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 6px; }
+  .sheet .kind { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--chip-ink, var(--muted)); }
+  .sheet .stitle { font-size: 21px; font-weight: 700; letter-spacing: -0.018em; line-height: 1.15; }
+  .sheet .swhen { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .sheet .swhen span { color: var(--muted); font-weight: 500; }
+  .sheet .scourse { font-size: 13px; color: var(--muted); }
+  .sheet .squote {
+    margin: 6px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--no-bg);
+    font-size: 13.5px; line-height: 1.45; font-style: italic; color: var(--muted);
+    border-left: 3px solid var(--chip-ink, var(--line));
+  }
+  .sheet .slinked { font-size: 13px; color: var(--accent); }
+  .sheet .slinked:empty { display: none; }
+  .sheet .sacts { display: flex; gap: 8px; margin-top: 8px; }
+  .sheet .sacts button {
+    flex: 1; height: 46px; border-radius: 12px; border: 0; font: inherit; font-size: 14.5px;
+    font-weight: 650; cursor: pointer; transition: transform 100ms ease-out;
+  }
+  .sheet .sacts .keep { background: var(--yes); color: #fff; }
+  .sheet .sacts .drop { background: var(--no-bg); color: var(--ink); }
+  .sheet .sacts button:active { transform: scale(.96); }
+  .sheet .shint { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -267,8 +357,9 @@
   <div class="stats" id="stats">loading…</div>
   <div class="health" id="health"></div>
   <div class="tabs" id="modes">
-    <button aria-pressed="true"  onclick="setMode('cards')">Deadlines</button>
-    <button aria-pressed="false" onclick="setMode('notes')">Notes</button>
+    <button aria-pressed="true"  data-mode="cards"  onclick="setMode('cards')">Deadlines</button>
+    <button aria-pressed="false" data-mode="agenda" onclick="setMode('agenda')">Agenda</button>
+    <button aria-pressed="false" data-mode="notes"  onclick="setMode('notes')">Notes</button>
   </div>
   <div class="tabs" id="tabs"></div>
 </header>
@@ -280,6 +371,22 @@
 <div class="undo" id="undo">
   <span id="undo-text"></span>
   <button onclick="undoLast()">Undo</button>
+</div>
+
+<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Deadline" aria-hidden="true">
+  <div class="grip"></div>
+  <div class="kind" id="sheet-kind"></div>
+  <div class="stitle" id="sheet-title"></div>
+  <div class="swhen" id="sheet-when"></div>
+  <div class="scourse" id="sheet-course"></div>
+  <blockquote class="squote" id="sheet-quote"></blockquote>
+  <div class="slinked" id="sheet-linked"></div>
+  <div class="sacts">
+    <button class="drop" onclick="sheetDecide('dismissed')">Dismiss</button>
+    <button class="keep" onclick="sheetDecide('accepted')">Keep</button>
+  </div>
+  <div class="shint">Drag down to close</div>
 </div>
 
 <script>
@@ -372,10 +479,14 @@ let MODE = 'cards', NOTES = [], OPEN = null;
 
 function setMode(m) {
   MODE = m; OPEN = null;
-  document.querySelectorAll('#modes button').forEach((b, i) =>
-    b.setAttribute('aria-pressed', (i === 0) === (m === 'cards')));
-  document.getElementById('heading').textContent = m === 'cards' ? 'Deadlines' : 'Notes';
+  document.querySelectorAll('#modes button').forEach(b =>
+    b.setAttribute('aria-pressed', b.dataset.mode === m));
+  document.getElementById('heading').textContent =
+    m === 'cards' ? 'Deadlines' : m === 'agenda' ? 'Agenda' : 'Notes';
+  // The agenda is the waiting list laid out by day; kept and dismissed
+  // items have already left it, so the status tabs do not apply.
   document.getElementById('tabs').style.display = m === 'cards' ? '' : 'none';
+  if (m === 'agenda') status = 'new';
   if (m === 'notes') loadNotes(); else load();
 }
 
@@ -444,7 +555,9 @@ function bucket(card) {
 
 const ORDER = ['Overdue', 'Today', 'Tomorrow', 'This week', 'This month', 'Later', 'No date yet'];
 
-function render() {
+function render() { if (MODE === 'agenda') renderAgenda(); else renderCards(); }
+
+function renderCards() {
   const shown = CARDS.filter(c => course === 'all' || c.course === course);
   const list = document.getElementById('list');
 
@@ -548,11 +661,12 @@ function toggleNote(button, id) {
 
 async function decide(id, newStatus) {
   const card = CARDS.find(c => c.id === id);
-  const el = document.querySelector(`.card[data-id="${id}"]`);
-  if (el) el.classList.add('going');
+  const el = document.querySelector(`.card[data-id="${id}"], .ag-row[data-id="${id}"]`);
+  const drop = () => { CARDS = CARDS.filter(c => c.id !== id); render(); };
 
   // Remove it locally straight away; a tap should never wait on the network.
-  setTimeout(() => { CARDS = CARDS.filter(c => c.id !== id); render(); }, 180);
+  if (el && el.classList.contains('ag-row')) collapseRow(el, drop);
+  else { if (el) el.classList.add('going'); setTimeout(drop, 180); }
   const reply = await api('/api/decide', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({id, status: newStatus})
@@ -589,6 +703,218 @@ async function undoLast() {
   lastAction = null;
   load();
 }
+
+// ------------------------------------------------------------------ agenda
+// Springs, parameterised the way Apple's designers think about them: a
+// damping ratio (1.0 = settles with no overshoot) and a response time in
+// seconds. Not a duration -- settle time emerges. Units are px and px/s.
+// Every motion below starts from wherever the thing is now and inherits
+// the finger's velocity, so nothing ever finishes an animation first.
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+class Spring {
+  constructor(value = 0, { response = 0.35, damping = 1, eps = 0.15 } = {}) {
+    this.x = value; this.v = 0; this.t = value;
+    this.response = response; this.damping = damping; this.eps = eps;
+  }
+  retarget(t, { velocity, response, damping } = {}) {
+    this.t = t;
+    if (velocity != null) this.v = velocity;
+    if (response != null) this.response = response;
+    if (damping != null) this.damping = damping;
+    return this;
+  }
+  step(dt) {
+    if (REDUCED) { this.x = this.t; this.v = 0; return this.x; }
+    const w = 2 * Math.PI / this.response, k = w * w, c = 2 * this.damping * w;
+    const n = Math.max(1, Math.ceil(dt / (1 / 240))), h = dt / n;
+    for (let i = 0; i < n; i++) {
+      const a = -k * (this.x - this.t) - c * this.v;
+      this.v += a * h; this.x += this.v * h;
+    }
+    return this.x;
+  }
+  get settled() { return Math.abs(this.v) < this.eps * 4 && Math.abs(this.x - this.t) < this.eps; }
+}
+
+const Ticker = {
+  fns: new Set(), last: 0, running: false,
+  add(fn) {
+    this.fns.add(fn);
+    if (!this.running) { this.running = true; this.last = performance.now(); requestAnimationFrame(t => this.frame(t)); }
+  },
+  remove(fn) { this.fns.delete(fn); },
+  frame(t) {
+    const dt = Math.min(0.05, (t - this.last) / 1000); this.last = t;
+    for (const fn of [...this.fns]) if (fn(dt) === false) this.fns.delete(fn);
+    if (this.fns.size) requestAnimationFrame(t => this.frame(t)); else this.running = false;
+  }
+};
+
+// Drive springs until they settle. Cancelling leaves each one holding its
+// live value -- which is exactly where an interrupted motion resumes from.
+function drive(springs, apply, done) {
+  const list = Array.isArray(springs) ? springs : [springs];
+  const fn = dt => {
+    for (const s of list) s.step(dt);
+    apply();
+    if (list.every(s => s.settled)) { for (const s of list) { s.x = s.t; s.v = 0; } apply(); done && done(); return false; }
+  };
+  Ticker.add(fn);
+  return () => Ticker.remove(fn);
+}
+// Where a flick would come to rest -- Apple's exponential form, not v²/2a.
+function project(v, d = 0.998) { return (v / 1000) * d / (1 - d); }
+// Progressive resistance past a boundary, rather than a hard stop.
+function rubberband(over, dim, c = 0.55) { return (over * dim * c) / (dim + c * Math.abs(over)); }
+
+class Tracker {
+  constructor() { this.s = []; }
+  reset() { this.s = []; }
+  push(y, t) { this.s.push([y, t]); while (this.s.length > 1 && t - this.s[0][1] > 100) this.s.shift(); }
+  velocity() {
+    if (this.s.length < 2) return 0;
+    const a = this.s[0], b = this.s[this.s.length - 1], dt = (b[1] - a[1]) / 1000;
+    return dt > 0 ? (b[0] - a[0]) / dt : 0;
+  }
+}
+
+const MONTHS = { Jan: 'January', Feb: 'February', Mar: 'March', Apr: 'April', May: 'May', Jun: 'June',
+  Jul: 'July', Aug: 'August', Sep: 'September', Oct: 'October', Nov: 'November', Dec: 'December' };
+const X_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+
+function soonText(c) {
+  if (c.pending || c.days === null) return '';
+  return c.days < 0 ? `${-c.days}d ago` : c.days === 0 ? 'today' : c.days === 1 ? 'tomorrow'
+    : c.days <= 30 ? `in ${c.days} days` : `in ${Math.round(c.days / 7)} wks`;
+}
+
+function renderAgenda() {
+  const shown = CARDS.filter(c => course === 'all' || c.course === course);
+  const list = document.getElementById('list');
+  if (!shown.length) { list.innerHTML = `<div class="empty">Nothing waiting on you here.</div>`; return; }
+
+  const byDay = new Map();
+  shown.forEach(c => {
+    const k = (!c.pending && c.date) ? c.date : 'none';
+    (byDay.get(k) || byDay.set(k, []).get(k)).push(c);
+  });
+  const keys = [...byDay.keys()].sort((a, b) => a === 'none' ? 1 : b === 'none' ? -1 : a.localeCompare(b));
+
+  let month = '';
+  list.innerHTML = `<ul class="agenda">` + keys.map(k => {
+    const items = byDay.get(k), first = items[0];
+    let dow = '', num = '·', mon = '';
+    if (k !== 'none') [dow, num, mon] = esc(first.when).replace(/\b0(\d)/, '$1').split(' ');
+    let head = '';
+    if (k === 'none') { head = `<li class="ag-month">No date yet</li>`; }
+    else if (mon !== month) { month = mon; head = `<li class="ag-month">${MONTHS[mon] || mon}</li>`; }
+    return head + `<li class="ag-day${first.days === 0 ? ' today' : ''}${k === 'none' ? ' none' : ''}">
+      <div class="ag-date"><span class="dow">${dow.toUpperCase()}</span><span class="num">${num}</span></div>
+      <div class="ag-items">${items.map(agRow).join('')}</div></li>`;
+  }).join('') + `</ul>`;
+}
+
+function agRow(c) {
+  const sub = [
+    c.time ? `<b>${esc(c.time)}</b>` : '',
+    c.linkedTo ? `<span class="linked">before ${esc(c.linkedTo)}</span>` : '',
+    `<span>${esc(c.courseCode)}</span>`,
+    c.kind === 'todo' && !c.date ? `<span>to do</span>` : '',
+    c.confidence !== 'high' ? `<span class="unsure">${c.confidence === 'low' ? 'unsure' : 'check'}</span>` : '',
+    c.onCalendar ? `<span class="oncal">in calendar</span>` : '',
+  ].filter(Boolean).join('');
+  return `<div class="ag-row" data-id="${c.id}" data-urgency="${urgencyOf(c)}">
+    <button class="ag-item" onclick="openSheet(${c.id})">
+      <span class="ttl">${esc(c.title)}</span><span class="sub">${sub}</span></button>
+    <div class="ag-acts">
+      <button class="ax" aria-label="Dismiss" onclick="decide(${c.id}, 'dismissed')">${X_ICON}</button>
+      <button class="ak" aria-label="Keep — add to calendar" onclick="decide(${c.id}, 'accepted')">${CHECK_ICON}</button>
+    </div></div>`;
+}
+
+function collapseRow(el, done) {
+  const h0 = el.offsetHeight, h = new Spring(h0, { response: 0.3, eps: 0.3 });
+  el.style.height = h0 + 'px'; el.style.overflow = 'hidden';
+  h.retarget(0);
+  drive(h, () => { el.style.height = h.x + 'px'; el.style.opacity = Math.max(0, h.x / h0); }, done);
+}
+
+// ------------------------------------------------------------- the sheet
+// One number describes it: how many px are visible. Three resting points,
+// chosen by projecting the finger's velocity; Apple's own drawer values.
+const sheet = document.getElementById('sheet'), scrim = document.getElementById('scrim');
+const vis = new Spring(0, { response: 0.3, damping: 0.8, eps: 0.3 });
+let sheetCancel = null, SHEET_ID = null;
+const SNAPS = () => ({ closed: 0, half: window.innerHeight * 0.5, full: window.innerHeight * 0.9 });
+
+function applySheet() {
+  const p = Math.min(1, vis.x / SNAPS().half);
+  sheet.style.transform = `translateY(${sheet.offsetHeight - vis.x}px)`;
+  sheet.style.visibility = vis.x > 1 ? 'visible' : 'hidden';
+  sheet.setAttribute('aria-hidden', String(vis.x <= 1));
+  scrim.style.opacity = p * 0.4;
+  scrim.style.pointerEvents = vis.x > 4 ? 'auto' : 'none';
+}
+function goSheet(target, velocity) {
+  sheetCancel && sheetCancel();
+  vis.retarget(target, { velocity });
+  sheetCancel = drive(vis, applySheet);
+}
+function openSheet(id) {
+  const c = CARDS.find(x => x.id === id); if (!c) return;
+  SHEET_ID = id;
+  sheet.dataset.urgency = urgencyOf(c);
+  document.getElementById('sheet-kind').textContent =
+    c.kind + (c.confidence !== 'high' ? (c.confidence === 'low' ? ' · unsure' : ' · worth checking') : '');
+  document.getElementById('sheet-title').textContent = c.title;
+  document.getElementById('sheet-when').innerHTML = (!c.pending && c.date)
+    ? `${esc(c.when)}${c.time ? ', ' + esc(c.time) : ''} <span>· ${soonText(c)}</span>`
+    : `<span>${c.kind === 'todo' ? 'No deadline — a to-do' : 'Date not announced yet'}</span>`;
+  document.getElementById('sheet-course').textContent = `${c.courseCode} · ${c.courseName || ''}`;
+  document.getElementById('sheet-quote').textContent = c.evidence ? '“' + c.evidence + '”' : 'No excerpt was stored for this one.';
+  // A linked date is inferred, not stated -- it says so, in the colour
+  // the card uses for the same thing.
+  document.getElementById('sheet-linked').textContent =
+    c.linkedTo ? `Placed before ${c.linkedTo}${c.linkedWhy ? ' — ' + c.linkedWhy : ''}` : '';
+  goSheet(SNAPS().half);
+}
+function closeSheet() { goSheet(0); }
+function sheetDecide(newStatus) { const id = SHEET_ID; closeSheet(); if (id != null) decide(id, newStatus); }
+
+(() => {
+  const tracker = new Tracker();
+  let active = false, startY = 0, grab = 0, pid = null;
+  sheet.addEventListener('pointerdown', e => {
+    if (e.target.closest('button')) return;
+    sheetCancel && sheetCancel();                  // catch it mid-flight
+    active = true; startY = e.clientY; grab = vis.x; pid = e.pointerId;
+    tracker.reset(); tracker.push(e.clientY, e.timeStamp);
+    sheet.setPointerCapture(pid);
+  });
+  sheet.addEventListener('pointermove', e => {
+    if (!active) return;
+    tracker.push(e.clientY, e.timeStamp);
+    const { full } = SNAPS();
+    let v = grab - (e.clientY - startY);            // respects where it was grabbed
+    if (v > full) v = full + rubberband(v - full, window.innerHeight, 0.55);
+    if (v < 0) v = 0;
+    vis.x = v; vis.v = 0; applySheet();
+  });
+  const release = () => {
+    if (!active) return; active = false;
+    try { sheet.releasePointerCapture(pid); } catch (_) {}
+    const v = -tracker.velocity();                  // up is more visible
+    const projected = vis.x + project(v);
+    const s = SNAPS(), pts = [s.closed, s.half, s.full];
+    goSheet(pts.reduce((a, b) => Math.abs(b - projected) < Math.abs(a - projected) ? b : a), v);
+  };
+  sheet.addEventListener('pointerup', release);
+  sheet.addEventListener('pointercancel', release);
+  addEventListener('resize', applySheet);
+  applySheet();
+})();
 
 load();
 loadHealth();
