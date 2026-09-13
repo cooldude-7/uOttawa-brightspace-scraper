@@ -122,6 +122,8 @@ python gcal.py --prune     drop other sections' deadlines already accepted
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
+python exams.py            every exam, and which courses have none yet
+python exams.py --on 2026-10-23   just that day
 python store.py --year-typo MCG2130 2025 2026    a year the prof mistyped
 python vault.py            build the Obsidian vault (no API cost)
 python vault.py --bundle   one file per course, to upload to a Claude Project
