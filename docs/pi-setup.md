@@ -160,7 +160,7 @@ SQLite runs here in WAL mode (`PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMA
 # Part 2 — Putting the scraper on the Pi
 
 Part 1 gave you storage. This part gets the code running on it, checking
-Brightspace every 30 minutes on its own.
+Brightspace every hour, 07:00 to 21:00, on its own.
 
 Do Part 1 first. Every command below assumes `df -h /mnt/data` reports the
 stick, not the SD card.
@@ -254,7 +254,7 @@ files from Step 7 arrived, and installs two services:
 | | |
 |---|---|
 | `brightspace-web` | the card list, always running, on port 8000 |
-| `brightspace-update` | one scrape, started every 30 minutes by a timer |
+| `brightspace-update` | one scrape, started hourly 07:00–21:00 by a timer |
 
 Installing the Python packages takes several minutes on a 3B+. It is not stuck.
 
@@ -265,7 +265,7 @@ replaces what it installed before.
 
 ## Step 9 — Check it actually works
 
-Do not wait 30 minutes to find out. Run a scrape immediately and watch it:
+Do not wait an hour to find out. Run a scrape immediately and watch it:
 
 ```bash
 sudo systemctl start brightspace-update

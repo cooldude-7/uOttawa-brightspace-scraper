@@ -111,19 +111,29 @@ def found_on_page(client, base, org_unit, kind, names):
 
     rows = _rows(body)
     wanted = {_norm(n): n for n in names if _norm(n)}
-    out = {}
 
+    # A plain substring test let "Quiz 1" claim the "Quiz 10" row if that
+    # came first on the page, and the wrong date then went in as high
+    # confidence with a note saying Brightspace showed it. So: the name has
+    # to sit on word boundaries, and of the rows that still match, the one
+    # with the least other text on it is the item's own row.
+    candidates = {}
     for row in rows:
         low = _norm(row)
         for key, original in wanted.items():
-            if original in out or key not in low:
-                continue
+            if re.search(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])", low):
+                candidates.setdefault(original, []).append((len(low), row))
+
+    out = {}
+    for original, found in candidates.items():
+        for _, row in sorted(found, key=lambda t: t[0]):
             dates = [d for d in (_parse(m) for m in PHRASE.finditer(row)) if d]
             deadlines = [d for d in dates if d["deadline"]]
             if deadlines:
                 # "Due on" beats "Available until" when a row carries both.
                 deadlines.sort(key=lambda d: d["label"].lower() != "due on")
                 out[original] = deadlines[0]
+                break
     return out
 
 

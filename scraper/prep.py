@@ -30,6 +30,7 @@ from memory is worth very little.
 """
 
 import csv
+import re
 import sys
 from datetime import date, datetime
 
@@ -232,7 +233,11 @@ def is_prepared(root, row):
     path = note_path(root, row["course_name"], row["title"])
     if not path.exists():
         return False
-    return "prepared:" in path.read_text(encoding="utf-8", errors="replace")[:400]
+    # vault.py writes "prepared: no" into every stub, so the bare key is
+    # true for everything. Only a date after it means a skill has run.
+    with path.open(encoding="utf-8", errors="replace") as fh:
+        head = fh.read(400)
+    return bool(re.search(r"^prepared:\s*\d{4}-", head, re.M))
 
 
 def log_use(root, row, parts, skill_name, produced):
@@ -269,10 +274,16 @@ def prepare(db, row, root, skill_override=None):
         print(f"  no skill file for {skill_name!r} -- run vault.py first")
         return None
 
-    others = db.execute(
-        """SELECT title, due_date, due_time, kind FROM dates
-           WHERE course_id = ? AND due_date IS NOT NULL AND status != 'dismissed'
-           ORDER BY due_date LIMIT 60""", (row["course_id"],)).fetchall()
+    # Through only_mine(), like everything else that reaches the model:
+    # who_text() tells it the schedule below is already the student's own,
+    # so five sections' dates here would be five sections stated as fact.
+    others = store.only_mine(db.execute(
+        """SELECT d.title, d.due_date, d.due_time, d.kind,
+                  c.d2l_id AS course_d2l_id
+           FROM dates d JOIN courses c ON c.id = d.course_id
+           WHERE d.course_id = ? AND d.due_date IS NOT NULL
+             AND d.status != 'dismissed'
+           ORDER BY d.due_date LIMIT 60""", (row["course_id"],)).fetchall())
 
     prompt = PROMPT.format(
         course=f"{parts['code']} — {parts['title']}",

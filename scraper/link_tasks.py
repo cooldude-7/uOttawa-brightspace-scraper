@@ -165,10 +165,19 @@ def main(argv=None):
         db0 = store.connect()
         cleared = db0.execute(
             "UPDATE dates SET linked_to = NULL WHERE linked_to = ''").rowcount
+        # Tasks already linked get their inferred date taken back so they are
+        # asked about again -- but only while still waiting on a decision. An
+        # accepted one has a calendar event on that date; leave it be.
+        redone = db0.execute(
+            """UPDATE dates SET due_date = NULL, due_time = NULL,
+                                linked_to = NULL, linked_why = NULL
+               WHERE linked_to IS NOT NULL AND linked_to != '' AND status = 'new'"""
+        ).rowcount
         db0.commit()
         db0.close()
-        if cleared:
-            print(f"  reconsidering {cleared} task(s) previously left undated")
+        if cleared or redone:
+            print(f"  reconsidering {cleared} task(s) left undated "
+                  f"and {redone} already linked")
 
     key = find_dates.api_key()
     client = anthropic.Anthropic(api_key=key)
@@ -176,6 +185,10 @@ def main(argv=None):
 
     db = store.connect()
     run_id = store.start_run(db, "link")
+    # Committed now, not at the end: the INSERT above opened a write
+    # transaction, and holding it across every API call below locked the
+    # database for any tap in the app for as long as the model took.
+    db.commit()
     courses = db.execute("SELECT id, name FROM courses ORDER BY name").fetchall()
 
     spent = 0.0
@@ -257,6 +270,8 @@ def main(argv=None):
                     db.execute(
                         "UPDATE dates SET linked_to = '' WHERE id = ? "
                         "AND linked_to IS NULL", (task["id"],))
+        if not dry:
+            db.commit()          # one course's links land before the next call
 
     if not dry:
         store.finish_run(db, run_id, 0, 0, linked, spent)

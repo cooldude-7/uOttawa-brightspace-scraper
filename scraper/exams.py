@@ -31,7 +31,7 @@ NOT_EXAM = re.compile(
 
 def is_exam(row):
     title = row["title"] or ""
-    if (row["kind"] or "").lower() == "exam":
+    if store.norm_kind(row["kind"]) == "exam":
         return True
     return bool(EXAMISH.search(title)) and not NOT_EXAM.search(title)
 
@@ -69,7 +69,8 @@ def main(argv):
 
     if on:
         hits = [r for r in exams if r["due_date"] == on]
-        when = datetime.strptime(on, "%Y-%m-%d").strftime("%A %-d %B %Y")
+        d = datetime.strptime(on, "%Y-%m-%d")
+        when = f"{d:%A} {d.day} {d:%B %Y}"     # %-d is Linux-only; this is not
         print(f"\n  {when}\n")
         if hits:
             for r in hits:

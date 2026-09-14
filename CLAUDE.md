@@ -28,8 +28,9 @@ Working end to end: login → scrape → download → read → store → link ta
 web app → calendar → vault. Running on the Pi, not the laptop.
 
 **The Pi is running** (2026-09-08). A 3B+ wired to a TP-Link travel router,
-256 GB stick formatted ext4 and mounted at `/mnt/data`, scraping every 30
-minutes under a systemd timer. `docs/pi-setup.md` was followed end to end on
+256 GB stick formatted ext4 and mounted at `/mnt/data`, scraping hourly from
+07:00 to 21:00 under a systemd timer (it began at every 30 minutes round the
+clock; nothing is posted at 3am). `docs/pi-setup.md` was followed end to end on
 the real hardware and corrected where it was wrong.
 
 The laptop's database was copied across rather than starting clean, so the
@@ -192,9 +193,9 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `course_parts()` turns "MCG2360  A00  Engineering Materials I [ LEC ] 20269"
   into a code and a title, because nobody remembers the codes.
 - **web.py** + `static/index.html` — FastAPI and one HTML page, no build step
-  (it has to run on the Pi). Two views: the deadline cards, and a **Notes**
-  view that reads the vault, so a prep document can be read on the phone
-  without Obsidian. Markdown is rendered server-side; maths comes from KaTeX
+  (it has to run on the Pi). Four views -- Deadlines, To-do, Agenda, and a
+  **Notes** view that reads the vault, so a prep document can be read on the
+  phone without Obsidian. Markdown is rendered server-side; maths comes from KaTeX
   on a CDN and degrades to raw TeX if that cannot load.
 - **gcal.py** — Google Calendar.
 - **paths.py** — where data lives. Unset, everything sits next to the code as
@@ -254,6 +255,16 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   so the kept list only grew. `done_at` is that, and the To-do tab is where it
   gets crossed off. Crossing something off never touches Google Calendar --
   it still happened.
+- **No row is ever kind `exam`.** The extractor's enum says `midterm` and
+  `final_exam`; `exact.py` emits assignment, quiz and session. Every rule
+  keyed on `"exam"` -- the 10-day lead time, the hand-in logic, `exams.py` --
+  was dead for a day without anything failing: a midterm simply got the
+  3-day lead of an unknown kind. `store.norm_kind()` folds the aliases; key
+  on its output, and if you add a kind, add it there.
+- **A linked to-do carries its anchor's date and time, so by `event_key` it
+  *is* the anchor.** The twin check in `save_dates()` and pass 1 of `tidy()`
+  both skip rows with `linked_to` set, or the to-do's longer title would win
+  the bucket and mark the real lab resolved -- silently, printing a count.
 - **Start dates are derived, never stored.** `store.start_by()` works back
   from the due date by `LEAD_DAYS` for the kind of thing (exam 10 days, quiz
   5, lab 4, assignment 3, to-do 2), overridable per kind in `me.json`. Derived

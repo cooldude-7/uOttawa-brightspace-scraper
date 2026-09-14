@@ -76,18 +76,31 @@ def save_prefs(prefs):
 # they can be tuned after a week of living with them, without a code change.
 LEAD_DAYS = {
     "todo": 2,
+    "reading": 2,
     "assignment": 3,
     "lab": 4,
+    "presentation": 4,
     "quiz": 5,
     "exam": 10,
     "session": 0,     # a class or a lab session is attended, not prepared for
     "other": 3,
 }
 
+# The extractor's enum says "midterm" and "final_exam"; nothing anywhere
+# says "exam". Every rule keyed on "exam" was dead until this mapped them --
+# a midterm was getting the 3-day lead of an unknown kind, not 10.
+KIND_ALIASES = {"midterm": "exam", "final_exam": "exam", "final": "exam",
+                "test": "exam", "homework": "assignment"}
+
+
+def norm_kind(kind):
+    key = (kind or "other").strip().lower()
+    return KIND_ALIASES.get(key, key)
+
 
 def lead_days(kind):
     override = (load_prefs().get("lead_days") or {})
-    key = (kind or "other").lower()
+    key = norm_kind(kind)
     if key in override:
         try:
             return max(0, int(override[key]))
@@ -214,7 +227,7 @@ def submission_map(db, rows):
 
     out = {}
     for row in rows:
-        kind = (row["kind"] or "").lower()
+        kind = norm_kind(row["kind"])
         excerpt = " ".join((row["source_excerpt"] or "").split())
 
         if kind in ("session",):
@@ -469,6 +482,11 @@ def tidy(db):
     for row in rows:
         if not row["due_date"]:
             continue
+        # Same reason as the twin check in save_dates: a linked to-do keys
+        # identically to its anchor, and the longer title would have won
+        # the bucket and marked the real deadline resolved.
+        if row["linked_to"]:
+            continue
         slots.setdefault(
             event_key(row["course_id"], row["due_date"], row["due_time"], row["title"]),
             []).append(row)
@@ -647,9 +665,13 @@ def save_dates(db, course_id, document_id, dates):
         if due:
             # Already have this event, at this time, for this audience? Then
             # this is the same deadline worded differently.
+            # A linked to-do carries its anchor's date and time on purpose,
+            # so by event_key it IS the anchor. It must not stand in for one:
+            # otherwise the real lab, arriving later, is skipped as a twin.
             twin = db.execute(
                 """SELECT id FROM dates
-                   WHERE course_id = ? AND due_date = ? AND status != 'dismissed'""",
+                   WHERE course_id = ? AND due_date = ? AND status != 'dismissed'
+                     AND (linked_to IS NULL OR linked_to = '')""",
                 (course_id, due),
             ).fetchall()
             mine = event_key(course_id, due, d.get("time") or None, d.get("title"))

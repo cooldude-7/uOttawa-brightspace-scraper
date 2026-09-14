@@ -10,6 +10,7 @@ http://<your-laptop-ip>:8000 (the address is printed on startup).
 
 import mimetypes
 import socket
+import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -82,7 +83,7 @@ def as_card(row, submit=None):
         "evidence": " ".join((row["source_excerpt"] or "").split()),
         # Set when this date was inferred by tying an undated task to
         # something dated, rather than read from a document.
-        "submit": (submit or ("yes", ""))[0],
+        "submit": (submit or ("", ""))[0],
         "submitWhy": (submit or ("", ""))[1],
         "startBy": store.start_by(due, row["kind"]),
         "startDays": days_until(store.start_by(due, row["kind"])),
@@ -260,14 +261,19 @@ def vault_index():
             code = cdir.name.split(" - ")[0]
             for f in sorted(cdir.rglob("*.md")):
                 folder = f.parent.name if f.parent != cdir else ""
-                head = f.read_text(encoding="utf-8", errors="replace")[:400]
+                # Only the front matter is wanted; a Content note is a whole
+                # lecture and there are a hundred of them on a Pi.
+                with f.open(encoding="utf-8", errors="replace") as fh:
+                    head = fh.read(400)
                 notes.append({
                     "course": code,
                     "courseName": cdir.name,
                     "folder": folder,
                     "title": f.stem.lstrip("_"),
                     "path": f.relative_to(root).as_posix(),
-                    "prepared": "prepared:" in head,
+                    # vault.py stubs every Work note with "prepared: no";
+                    # prep.py overwrites that with a date. Only the date counts.
+                    "prepared": bool(re.search(r"^prepared:\s*\d{4}-", head, re.M)),
                     "isCourseNote": folder == "",
                     "order": FOLDER_ORDER.get(folder, 9),
                 })

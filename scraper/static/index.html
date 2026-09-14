@@ -803,14 +803,21 @@ function toggleNote(button, id) {
 
 async function decide(id, newStatus) {
   const card = CARDS.find(c => c.id === id);
-  const el = document.querySelector(`.card[data-id="${id}"], .ag-row[data-id="${id}"]`);
-  const drop = () => { CARDS = CARDS.filter(c => c.id !== id); render(); };
+  const el = document.querySelector(
+    `.card[data-id="${id}"], .ag-row[data-id="${id}"], .td[data-id="${id}"]`);
+  const drop = () => {
+    CARDS = CARDS.filter(c => c.id !== id);
+    // The To-do tab renders from its own list; filtering CARDS alone left
+    // the row on screen after a dismiss from the sheet.
+    if (MODE === 'todo') TODO = TODO.filter(c => c.id !== id);
+    render();
+  };
 
   // Remove it locally straight away; a tap should never wait on the network.
   // A card leaves in the direction of the decision -- kept goes right,
   // dismissed goes left, put back goes right -- and the gap closes behind it.
   if (!el) drop();
-  else if (el.classList.contains('ag-row')) collapseRow(el, drop);
+  else if (el.classList.contains('ag-row') || el.classList.contains('td')) collapseRow(el, drop);
   else slideOut(el, newStatus === 'dismissed' ? -1 : 1, drop);
   const reply = await api('/api/decide', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -1187,6 +1194,8 @@ function openSheet(id) {
   const c = CARDS.find(x => x.id === id); if (!c) return;
   SHEET_ID = id;
   sheet.dataset.urgency = urgencyOf(c);
+  document.querySelector('.sheet .sacts .keep').textContent =
+    MODE === 'todo' ? (c.doneAt ? 'Not done' : 'Done') : 'Keep';
   document.getElementById('sheet-kind').textContent =
     c.kind + (c.confidence !== 'high' ? (c.confidence === 'low' ? ' · unsure' : ' · worth checking') : '');
   document.getElementById('sheet-title').textContent = c.title;
@@ -1208,7 +1217,12 @@ function openSheet(id) {
   goSheet(SNAPS().half);
 }
 function closeSheet() { goSheet(0); }
-function sheetDecide(newStatus) { const id = SHEET_ID; closeSheet(); if (id != null) decide(id, newStatus); }
+function sheetDecide(newStatus) {
+  const id = SHEET_ID; closeSheet(); if (id == null) return;
+  // In To-do everything is already kept, so the green button means done.
+  if (MODE === 'todo' && newStatus === 'accepted') return toggleDone(id);
+  decide(id, newStatus);
+}
 
 (() => {
   const tracker = new Tracker();
