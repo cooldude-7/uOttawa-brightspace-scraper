@@ -106,7 +106,8 @@ def when(row):
         pretty = datetime.strptime(d, "%Y-%m-%d").strftime("%a %d %b")
     except ValueError:
         pretty = d
-    return f"{pretty}{' ' + t if t else ''}"
+    shown = store.pretty_time(t)
+    return f"{pretty}{' ' + shown if shown else ''}"
 
 
 def line_for(row, today):

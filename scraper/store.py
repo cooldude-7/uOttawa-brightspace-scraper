@@ -125,27 +125,139 @@ HANDS_IN = re.compile(
 FROM_BRIGHTSPACE = "Brightspace lists this due date on the item itself"
 
 
-def submission(row):
-    """Whether something has to be handed in. -> ('yes'|'no'|'unsure', why).
+STOP_WORDS = {
+    "the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "your",
+    "you", "with", "from", "this", "that", "is", "are", "be", "make", "get",
+    "new", "use", "using", "before", "after", "lab", "labs", "assignment",
+    "submission", "submit", "report", "activity", "pre", "prelab", "part",
+    "one", "two", "week", "class", "course", "section", "group", "groups",
+}
 
-    The honest third state is the point. "Make a Tinkercad account" may want
-    proof or may want nothing, and a document that does not say leaves the
-    app with no business claiming either -- so it says it does not know,
-    which is the cue to go and look.
+
+def pretty_time(value):
+    """24-hour times out of the API, read back as a person says them.
+
+    Everything downstream displays whatever this returns, so a time the AI
+    already wrote as "7:00 PM" is tidied rather than re-parsed -- half the
+    times in the database arrive in each shape.
     """
-    kind = (row["kind"] or "").lower()
-    if kind in ("session", "exam"):
-        return "no", "You attend this one."
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})\s*([AaPp])\.?[Mm]\.?", raw)
+    if m:
+        hour, minute, half = int(m.group(1)), m.group(2), m.group(3).upper()
+        return f"{hour}:{minute} {half}M"
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?", raw)
+    if not m:
+        return raw
+    hour, minute = int(m.group(1)), m.group(2)
+    if hour > 23:
+        return raw
+    half = "AM" if hour < 12 else "PM"
+    display = hour % 12 or 12
+    return f"{display}:{minute} {half}"
 
-    excerpt = " ".join((row["source_excerpt"] or "").split())
 
-    if kind in ("assignment", "quiz") and FROM_BRIGHTSPACE in excerpt:
-        return "yes", "Brightspace has a submission folder for this."
-    if HANDS_IN.search(excerpt):
-        return "yes", "The document says something is handed in."
-    if kind in ("assignment", "quiz", "lab"):
-        return "yes", "An assignment, quiz or lab report is normally handed in."
-    return "unsure", "Nothing read so far says whether this gets handed in."
+def parse_time(value):
+    """A stored time as 24-hour "HH:MM", or None if it is not a time.
+
+    find_dates.py asks the model for 24-hour and gets it, but a model can
+    slip, and the one place this is parsed rather than shown is building a
+    calendar event -- where a ValueError means an accepted deadline quietly
+    never reaches the calendar. Accept both shapes rather than risk that.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})\s*([AaPp])\.?[Mm]\.?", raw)
+    if m:
+        hour, minute, half = int(m.group(1)) % 12, m.group(2), m.group(3).lower()
+        if half == "p":
+            hour += 12
+        return f"{hour:02d}:{minute}"
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})(?::\d{2})?", raw)
+    if m and int(m.group(1)) <= 23:
+        return f"{int(m.group(1)):02d}:{m.group(2)}"
+    return None
+
+
+def keywords(title):
+    """The words in a title that could identify the same thing elsewhere."""
+    words = re.findall(r"[a-z0-9]+", (title or "").lower())
+    return {w for w in words if len(w) > 2 and w not in STOP_WORDS}
+
+
+def submission_map(db, rows):
+    """Whether each row has something to hand in. -> {id: (state, why)}.
+
+    The point is to answer, not to tell the student to go and look. Three
+    facts settle most of it, and all three are already on file:
+
+      * an assignment or quiz from Brightspace IS a submission folder -- that
+        is what the endpoint returns, so there is nothing to infer;
+      * a document that says submit, upload, dropbox or attestation is saying
+        so outright;
+      * and where neither holds, the absence of any matching folder in that
+        course is itself evidence. Brightspace lists every folder a course
+        has. If none of them is this, there is nowhere on Brightspace to
+        hand it in, and saying so is a real answer.
+
+    What it cannot know is a professor collecting something on paper in
+    class, so "no" is phrased as what was checked rather than as a promise.
+    """
+    folders = {}
+    for f in db.execute(
+            "SELECT course_id, title FROM dates "
+            "WHERE kind IN ('assignment', 'quiz') AND status != 'dismissed'"):
+        folders.setdefault(f["course_id"], []).append((f["title"], keywords(f["title"])))
+
+    out = {}
+    for row in rows:
+        kind = (row["kind"] or "").lower()
+        excerpt = " ".join((row["source_excerpt"] or "").split())
+
+        if kind in ("session",):
+            out[row["id"]] = ("no", "A class -- you turn up, nothing is handed in.")
+        elif kind == "exam":
+            out[row["id"]] = ("no", "An exam -- you sit it, nothing is handed in.")
+        elif kind in ("assignment", "quiz") and FROM_BRIGHTSPACE in excerpt:
+            out[row["id"]] = ("yes", "Brightspace has a submission folder for this.")
+        elif HANDS_IN.search(excerpt):
+            out[row["id"]] = ("yes", "The document says it is handed in.")
+        elif kind in ("assignment", "quiz", "lab"):
+            out[row["id"]] = ("yes", "An assignment, quiz or lab report is handed in.")
+        else:
+            mine = keywords(row["title"])
+            hit = None
+            for title, words in folders.get(row["course_id"], []):
+                shared = mine & words
+                # One distinctive word (arduino, soldering, tinkercad) or two
+                # ordinary ones. Short overlaps match everything and are worse
+                # than no match at all.
+                if any(len(w) >= 6 for w in shared) or len(shared) >= 2:
+                    hit = title
+                    break
+            if hit:
+                out[row["id"]] = ("yes", f'Hands in through "{hit}" on Brightspace.')
+            else:
+                out[row["id"]] = (
+                    "no",
+                    "Nothing to hand in: no submission folder in this course "
+                    "matches it, and nothing read says to submit anything. "
+                    "Just do it.")
+    return out
+
+
+def submission(row, db=None):
+    """One row's answer. Prefer submission_map() for a list."""
+    if db is None:
+        db = connect()
+        try:
+            return submission_map(db, [row])[row["id"]]
+        finally:
+            db.close()
+    return submission_map(db, [row])[row["id"]]
 
 
 def mark_done(db, date_id, done=True):

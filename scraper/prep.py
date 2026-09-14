@@ -285,7 +285,7 @@ def prepare(db, row, root, skill_override=None):
         who=who_text(row["course_d2l_id"]),
         profile=profile_text(),
         dates="\n".join(
-            f"  {with_weekday(o['due_date'])} {o['due_time'] or ''} "
+            f"  {with_weekday(o['due_date'])} {store.pretty_time(o['due_time'])} "
             f"{o['kind'] or ''} — {o['title']}" for o in others) or "  (none)",
         material=material_for(row["course_name"]))
 

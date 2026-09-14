@@ -53,7 +53,7 @@ def days_until(due):
         return None
 
 
-def as_card(row):
+def as_card(row, submit=None):
     due = row["due_date"]
     left = days_until(due)
     when = ""
@@ -75,15 +75,15 @@ def as_card(row):
         "confidence": row["confidence"] or "high",
         "date": due,
         "when": when,
-        "time": row["due_time"] or "",
+        "time": store.pretty_time(row["due_time"]),
         "days": left,
         "pending": bool(row["pending"]),
         "onCalendar": bool(row["gcal_event_id"]),
         "evidence": " ".join((row["source_excerpt"] or "").split()),
         # Set when this date was inferred by tying an undated task to
         # something dated, rather than read from a document.
-        "submit": store.submission(row)[0],
-        "submitWhy": store.submission(row)[1],
+        "submit": (submit or ("yes", ""))[0],
+        "submitWhy": (submit or ("", ""))[1],
         "startBy": store.start_by(due, row["kind"]),
         "startDays": days_until(store.start_by(due, row["kind"])),
         "doneAt": row["done_at"] if "done_at" in row.keys() else None,
@@ -97,7 +97,8 @@ def get_cards(status: str = "new", sessions: str = "all", all_sections: bool = F
     db = store.connect()
     try:
         rows = store.cards(db, status, not all_sections)
-        cards = [as_card(r) for r in rows]
+        hands = store.submission_map(db, rows)
+        cards = [as_card(r, hands.get(r["id"])) for r in rows]
     finally:
         db.close()
 
@@ -131,11 +132,12 @@ def get_todo():
                FROM dates d JOIN courses c ON c.id = d.course_id
                WHERE d.status = 'accepted'
                ORDER BY d.due_date IS NULL, d.due_date, d.due_time""").fetchall())
+        hands = store.submission_map(db, rows)
         waiting = store.summary(db)["new"]
     finally:
         db.close()
 
-    cards = [as_card(r) for r in rows]
+    cards = [as_card(r, hands.get(r["id"])) for r in rows]
     # A class in the timetable is attended, not worked on.
     cards = [c for c in cards if c["kind"] != "session"]
     return {"items": cards, "waiting": waiting}

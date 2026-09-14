@@ -113,7 +113,7 @@ def main(argv):
 def show(r):
     parts = store.course_parts(r["course_name"])
     when = r["due_date"] or "no date"
-    at = f" {r['due_time']}" if r["due_time"] else ""
+    at = f" {store.pretty_time(r['due_time'])}" if r["due_time"] else ""
     if r["due_date"]:
         d = datetime.strptime(r["due_date"], "%Y-%m-%d")
         when = d.strftime("%a %d %b")

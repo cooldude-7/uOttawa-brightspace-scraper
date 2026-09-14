@@ -262,14 +262,25 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   lead time but how many items sit in "start now" at once: if fifteen do, that
   reads exactly like none of them do. The To-do tab colours a start date only
   within a day of it, for the same reason.
-- **"Do I have to hand something in" has three answers, and one of them is
-  "don't know".** `store.submission()` reports yes / no / unsure from what was
-  actually read: an assignment or quiz from Brightspace has a submission
-  folder by definition, a document saying submit/upload/hand in is evidence,
-  and everything else -- "make a Tinkercad account", "bring safety glasses" --
-  comes back unsure, shown as *check if anything to hand in*. Resist making
-  that binary. Telling the user an account signup needed proof when it did
-  not is the same class of error as inventing a date.
+- **"Do I have to hand something in" gets answered, not deferred.**
+  `store.submission_map()` decides from three facts already on file: an
+  assignment or quiz from Brightspace *is* a submission folder, a document
+  saying submit/upload/dropbox says so outright, and otherwise the **absence**
+  of any matching folder in that course is itself evidence -- Brightspace
+  lists every folder a course has, so if none of them is this, there is
+  nowhere to hand it in. Task titles match folder titles on one distinctive
+  word or two ordinary ones, which is how "install the Arduino IDE" finds
+  "Arduino lab + BOM submission". An earlier version said "check if anything
+  to hand in" and the user rightly rejected it: telling them to go and look
+  is the work the app exists to do. What it genuinely cannot know is a
+  professor collecting paper in class, so "no" is worded as what was checked,
+  not as a promise.
+- **Times are stored 24-hour and shown 12-hour.** `store.pretty_time()` for
+  display, `store.parse_time()` for the one place a time is parsed rather
+  than shown -- building a calendar event. That parse used `strptime(...,
+  "%H:%M")` directly, so a model returning "7:00 PM" instead of the 19:00 the
+  prompt asks for would have raised and quietly cost an accepted deadline its
+  calendar entry.
 - **A linked date is inferred, not stated.** `linked_to` being set is what
   says so, and the card shows "before Lab 5" in a different colour for exactly
   that reason. Never let a linked date render as though a document published it.

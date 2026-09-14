@@ -36,7 +36,7 @@ def when(row):
     days = (d - date.today()).days
     label = f"{WEEKDAY[d.weekday()]} {d.strftime('%d %b')}"
     if row["due_time"]:
-        label += f" {row['due_time']}"
+        label += f" {store.pretty_time(row['due_time'])}"
     if days < 0:
         return label, "past"
     if days == 0:

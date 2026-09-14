@@ -141,8 +141,9 @@ def event_body(row):
         "source": {"title": "Brightspace", "url": "https://uottawa.brightspace.com/d2l/home"},
     }
 
-    if row["due_time"]:
-        start = datetime.strptime(f"{row['due_date']} {row['due_time']}", "%Y-%m-%d %H:%M")
+    at = store.parse_time(row["due_time"])
+    if at:
+        start = datetime.strptime(f"{row['due_date']} {at}", "%Y-%m-%d %H:%M")
         body["start"] = {"dateTime": start.isoformat(), "timeZone": TIMEZONE}
         body["end"] = {"dateTime": (start + timedelta(hours=1)).isoformat(),
                        "timeZone": TIMEZONE}

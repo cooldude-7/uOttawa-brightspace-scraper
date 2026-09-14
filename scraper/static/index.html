@@ -462,7 +462,7 @@
     font-weight: 650; padding: 2px 7px; border-radius: 6px; letter-spacing: .01em;
   }
   .flag.yes { background: var(--mid-bg); color: var(--mid); }
-  .flag.unsure { background: var(--soon-bg); color: var(--soon); }
+  .flag.no { background: var(--no-bg); color: var(--muted); }
   .td.done .flag { opacity: .6; }
   .sheet .flag { font-size: 12px; padding: 3px 9px; align-self: flex-start; }
   .sheet .flagwhy { font-size: 12.5px; color: var(--muted); margin-top: -4px; }
@@ -960,8 +960,11 @@ function todoRow(c) {
       : d === 1 ? 'start tomorrow' : `start in ${d}d`}</span>`);
   }
   when.push(`<span class="course">${esc(c.courseCode)}</span>`);
+  // Both answers are worth saying. "Nothing to hand in" is the one that
+  // stops you opening Brightspace to find out.
   if (c.submit === 'yes') when.push(`<span class="flag yes">hand in</span>`);
-  else if (c.submit === 'unsure') when.push(`<span class="flag unsure">check if anything to hand in</span>`);
+  else if (c.kind === 'todo' || c.kind === 'other')
+    when.push(`<span class="flag no">nothing to hand in</span>`);
 
   const due = c.when
     ? `<span class="due">${esc(c.when)}${c.time ? ` <span class="at">${esc(c.time)}</span>` : ''}${
@@ -1194,8 +1197,7 @@ function openSheet(id) {
   const flag = document.getElementById('sheet-flag');
   const flagWhy = document.getElementById('sheet-flagwhy');
   flag.className = 'flag ' + (c.submit || '');
-  flag.textContent = c.submit === 'yes' ? 'Something to hand in'
-    : c.submit === 'unsure' ? 'Not sure anything is handed in' : 'Nothing to hand in';
+  flag.textContent = c.submit === 'yes' ? 'Something to hand in' : 'Nothing to hand in';
   flag.hidden = false;
   flagWhy.textContent = c.submitWhy || '';
   document.getElementById('sheet-quote').textContent = c.evidence ? '“' + c.evidence + '”' : 'No excerpt was stored for this one.';
