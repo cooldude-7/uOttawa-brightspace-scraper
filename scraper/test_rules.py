@@ -117,6 +117,59 @@ class OtherPeoplesSectionsStayHidden(unittest.TestCase):
             finally:
                 store.PREFS_PATH = old
 
+    def test_a_stale_section_does_not_hide_every_deadline(self):
+        """GNG2101 renamed its lab sections from A1-A5 to C1-C3 mid-term.
+        me.json still said a4, which matches nothing -- and filtering on it
+        would have hidden every real lab deadline in the course."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "me.json"
+            prefs.write_text('{"sections": {"1": "a4"}}', encoding="utf-8")
+            old_prefs, store.PREFS_PATH = store.PREFS_PATH, prefs
+            try:
+                db = fresh_db()
+                cid = add_course(db)
+                for name in ("Circuit manual submission (Section C1)",
+                             "Circuit manual submission (Section C2)",
+                             "Circuit manual submission (Section C3)"):
+                    add_date(db, cid, name, "2026-09-22", key=name)
+                rows = db.execute(
+                    "SELECT d.*, c.d2l_id AS course_d2l_id FROM dates d "
+                    "JOIN courses c ON c.id = d.course_id").fetchall()
+
+                self.assertEqual(len(store.only_mine(rows)), 3,
+                                 "none of them match a4, so none may be hidden")
+
+                stale = store.stale_sections(rows)
+                self.assertEqual(len(stale), 1)
+                course, configured, actual = stale[0]
+                self.assertEqual(configured, "a4")
+                self.assertEqual(actual, ["c1", "c2", "c3"])
+            finally:
+                store.PREFS_PATH = old_prefs
+
+    def test_a_section_that_does_exist_still_filters(self):
+        """The guard must not become an excuse to stop filtering."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "me.json"
+            prefs.write_text('{"sections": {"1": "c1"}}', encoding="utf-8")
+            old_prefs, store.PREFS_PATH = store.PREFS_PATH, prefs
+            try:
+                db = fresh_db()
+                cid = add_course(db)
+                for name in ("Circuit manual submission (Section C1)",
+                             "Circuit manual submission (Section C2)",
+                             "Circuit manual submission (Section C3)"):
+                    add_date(db, cid, name, "2026-09-22", key=name)
+                rows = db.execute(
+                    "SELECT d.*, c.d2l_id AS course_d2l_id FROM dates d "
+                    "JOIN courses c ON c.id = d.course_id").fetchall()
+                kept = store.only_mine(rows)
+                self.assertEqual([r["title"] for r in kept],
+                                 ["Circuit manual submission (Section C1)"])
+                self.assertEqual(store.stale_sections(rows), [])
+            finally:
+                store.PREFS_PATH = old_prefs
+
     def test_case_does_not_hide_your_own_deadline(self):
         """A hand-edited me.json saying "A4" must behave like "a4"."""
         with tempfile.TemporaryDirectory() as tmp:

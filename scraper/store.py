@@ -802,18 +802,71 @@ def only_mine(rows, course_key="course_d2l_id"):
         # exists to prevent.
         return str(a).strip().lower() == str(b).strip().lower()
 
+    # A course whose sections are named nothing like the one on file is a
+    # course where the setting has gone stale -- GNG2101 renamed its lab
+    # sections from A1-A5 to C1-C3 mid-term, and "a4" then matched nothing,
+    # so every real lab deadline in it would have been filtered away as
+    # somebody else's. Filtering is skipped for such a course: showing a few
+    # extra rows is a nuisance, hiding every real one is the failure this
+    # project exists to prevent.
+    seen = {}
+    for row in rows:
+        section, group = audience(row["title"])
+        by_course = seen.setdefault(str(row[course_key]), (set(), set()))
+        if section:
+            by_course[0].add(section.lower())
+        if group:
+            by_course[1].add(group.lower())
+
+    stale = set()
+    for course, (found_sections, found_groups) in seen.items():
+        if (course in sections and found_sections
+                and not any(same(s, sections[course]) for s in found_sections)):
+            stale.add(("section", course))
+        if (course in groups and found_groups
+                and not any(same(g, groups[course]) for g in found_groups)):
+            stale.add(("group", course))
+
     kept = []
     for row in rows:
         course = str(row[course_key])
         section, group = audience(row["title"])
         # A deadline naming no section belongs to everyone; only one naming
         # somebody else's is dropped.
-        if section and course in sections and not same(section, sections[course]):
+        if (section and course in sections and ("section", course) not in stale
+                and not same(section, sections[course])):
             continue
-        if group and course in groups and not same(group, groups[course]):
+        if (group and course in groups and ("group", course) not in stale
+                and not same(group, groups[course])):
             continue
         kept.append(row)
     return kept
+
+
+def stale_sections(rows, course_key="course_d2l_id"):
+    """Courses where me.json names a section that appears nowhere.
+
+    -> [(course_id, configured, [what the deadlines actually say])]. Reported
+    rather than guessed at: which section you are in is a fact about your
+    timetable, not something to infer from titles.
+    """
+    prefs = load_prefs()
+    sections = prefs.get("sections", {})
+    if not sections:
+        return []
+
+    found = {}
+    for row in rows:
+        section, _ = audience(row["title"])
+        if section:
+            found.setdefault(str(row[course_key]), set()).add(section.lower())
+
+    out = []
+    for course, seen in found.items():
+        want = sections.get(course)
+        if want and not any(str(want).strip().lower() == s for s in seen):
+            out.append((course, want, sorted(seen)))
+    return out
 
 
 def summary(db):

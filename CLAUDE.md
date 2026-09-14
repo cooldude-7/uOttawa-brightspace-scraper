@@ -264,6 +264,15 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `prep.py` all go through it — it was once inline in `cards()` and the other
   two showed all five sections. `gcal.py --prune` cleans up anything accepted
   before the filter knew.
+- **A section setting can go stale, and then it hides everything.** GNG2101's
+  lab sections were A1–A5 and became **C1–C3**; `me.json` still said `a4`,
+  which matches nothing, so `only_mine()` would have dropped every real lab
+  deadline in the course as somebody else's — silently, which is the exact
+  failure mode this project exists to prevent. `only_mine()` now skips
+  filtering for any course whose deadlines name no section resembling the one
+  on file, and `store.stale_sections()` reports it; `update.py` prints it at
+  the end of every scrape. Showing a few extra rows is a nuisance; hiding a
+  real deadline is not recoverable.
 - **What the app may write is the user's professor's call, not ours.**
   `Skills/course-policies.md` holds it per course, in plain English the user
   edits. A course not listed there defaults to prepare-not-draft. One rule sits

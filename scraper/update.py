@@ -146,7 +146,24 @@ def scrape(argv):
 
     db = store.connect()
     after = store.summary(db)
+    # A section on file that matches nothing in a course means the setting
+    # has gone stale. Filtering is skipped for that course rather than
+    # hiding everything, but it has to be said out loud or the setting stays
+    # wrong forever and the list quietly carries other people's deadlines.
+    stale = store.stale_sections(db.execute(
+        """SELECT d.title, c.d2l_id AS course_d2l_id, c.name AS course_name
+           FROM dates d JOIN courses c ON c.id = d.course_id
+           WHERE d.status = 'new'""").fetchall())
+    names = {str(r["d2l_id"]): r["name"] for r in
+             db.execute("SELECT d2l_id, name FROM courses")}
     db.close()
+
+    for course, configured, actual in stale:
+        code = store.course_parts(names.get(course, course))["code"]
+        print(f"\n  ! {code}: me.json says you are in section {configured}, but its"
+              f"\n    deadlines name {', '.join(actual)}. Nothing is being hidden for"
+              f"\n    this course until that is settled -- run  python mysection.py"
+              f"\n    or edit me.json.")
 
     found = after["new"] + after["pending"] - before["new"] - before["pending"]
     # Documents and announcements, counted separately from deadlines. A lecture
