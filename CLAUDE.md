@@ -141,6 +141,7 @@ python backup.py           dump the database into the vault
 python backup.py --restore rebuild a database from that dump
 python exams.py            every exam, and which courses have none yet
 python exams.py --on 2026-10-23   just that day
+python store.py --section GNG2101 C1             which lab section you are in
 python store.py --year-typo MCG2130 2025 2026    a year the prof mistyped
 python vault.py            build the Obsidian vault (no API cost)
 python vault.py --bundle   one file per course, to upload to a Claude Project

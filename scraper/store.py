@@ -895,6 +895,28 @@ def summary(db):
 if __name__ == "__main__":
     import sys
 
+    # python store.py --section GNG2101 C1
+    if "--section" in sys.argv:
+        i = sys.argv.index("--section")
+        try:
+            code, section = sys.argv[i + 1].upper(), sys.argv[i + 2]
+        except IndexError:
+            sys.exit("usage: python store.py --section GNG2101 C1")
+        db = connect()
+        row = next((r for r in db.execute("SELECT d2l_id, name FROM courses")
+                    if course_parts(r["name"])["code"].upper() == code), None)
+        db.close()
+        if not row:
+            sys.exit(f"No course called {code}. Run update.py first.")
+        prefs = load_prefs()
+        prefs.setdefault("sections", {})[str(row["d2l_id"])] = section.strip().lower()
+        save_prefs(prefs)
+        print(f"  {code}: you are in section {section.strip().lower()}.")
+        print(f"  Written to {PREFS_PATH}.")
+        print("  Other sections' deadlines will be hidden from now on.")
+        print("  Run  python gcal.py --prune  to drop any already in your calendar.")
+        sys.exit(0)
+
     # python store.py --year-typo MCG2130 2025 2026 "the prof mistyped it"
     if "--year-typo" in sys.argv:
         i = sys.argv.index("--year-typo")
