@@ -149,6 +149,11 @@ python prep.py --list      work waiting to be prepared, with ids
 python prep.py 412         run the right skill against one item
 ```
 
+Separately, `labs/labpdf.py` turns a folder of GNG1106 lab screenshots into
+the PDF to hand in -- ordered by when each was taken, nothing added. It runs
+on the student's laptop, not the Pi, and shares nothing with the scraper. See
+`labs/README.md`.
+
 `update.py` chains `collect.py` → `exact.py` → `download.py` → `find_dates.py`
 → `link_tasks.py` → `vault.py`. The last two are wrapped so a failure there
 cannot take a scrape down with it — deadlines are the product.

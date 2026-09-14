@@ -15,3 +15,5 @@ __pycache__/
 .venv/
 scraper/vault/
 scraper/profile/
+# where the GNG1106 folder is on this particular machine
+labs/labpdf.json
