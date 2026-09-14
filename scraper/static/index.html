@@ -406,6 +406,42 @@
   .td .when .course { color: var(--ink); font-weight: 600; }
   .td .open { background: none; border: 0; padding: 0; font: inherit;
               text-align: left; color: inherit; cursor: pointer; width: 100%; }
+
+  /* The two tabs you act in, told apart from the two you look things up
+     in. Deadlines is where a decision gets made and To-do is where the
+     work is; Agenda and Notes are references. */
+  #modes { align-items: center; }
+  #modes .tabgap { flex: 0 0 auto; width: 1px; height: 20px; background: var(--line); margin: 0 5px; }
+  #modes .primary {
+    font-size: 14.5px; font-weight: 650; padding: 8px 13px; color: var(--ink);
+    background: var(--card); border-color: var(--line);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  #modes .primary[aria-pressed="true"] {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  #modes .primary .badge {
+    font-size: 11.5px; font-weight: 700; min-width: 18px; padding: 1px 5px;
+    border-radius: 9px; background: var(--no-bg); color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  #modes .primary .badge:empty { display: none; }
+  #modes .primary[aria-pressed="true"] .badge { background: rgba(255,255,255,.25); color: #fff; }
+  #modes button:not(.primary) { font-size: 13px; padding: 6px 10px; }
+
+  /* Done is history: folded away by default, because a list of things you
+     have finished should not push the things you have not off the screen. */
+  .td-done-head {
+    display: flex; align-items: center; gap: 8px; width: 100%; background: none;
+    border: 0; font: inherit; cursor: pointer; padding: 0; margin: 22px 2px 9px;
+    font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); font-weight: 600;
+  }
+  .td-done-head .caret { transition: transform 140ms ease-out; font-size: 10px; }
+  .td-done-head[aria-expanded="true"] .caret { transform: rotate(90deg); }
+  .td-done-head .n { text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .td-when { font-size: 11.5px; color: var(--muted); margin: 14px 2px 6px;
+             text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -415,9 +451,12 @@
   <div class="stats" id="stats">loading…</div>
   <div class="health" id="health"></div>
   <div class="tabs" id="modes">
-    <button aria-pressed="true"  data-mode="cards"  onclick="setMode('cards')">Deadlines</button>
+    <button class="primary" aria-pressed="true"  data-mode="cards" onclick="setMode('cards')"
+      >Deadlines<span class="badge" id="badge-cards"></span></button>
+    <button class="primary" aria-pressed="false" data-mode="todo"  onclick="setMode('todo')"
+      >To-do<span class="badge" id="badge-todo"></span></button>
+    <span class="tabgap" aria-hidden="true"></span>
     <button aria-pressed="false" data-mode="agenda" onclick="setMode('agenda')">Agenda</button>
-    <button aria-pressed="false" data-mode="todo"   onclick="setMode('todo')">To-do</button>
     <button aria-pressed="false" data-mode="notes"  onclick="setMode('notes')">Notes</button>
   </div>
   <div class="tabs" id="tabs"></div>
@@ -465,6 +504,7 @@ async function load() {
   render();
   const s = await api('/api/summary');
   renderTabs(s);
+  renderModeBadges(s);
   document.getElementById('stats').innerHTML =
     `<b>${s.new}</b> waiting · <b>${s.pending}</b> not scheduled yet · ${s.accepted} kept · ${s.dismissed} dismissed`;
 }
@@ -500,6 +540,16 @@ async function loadHealth() {
     el.className = 'health';
     el.textContent = when + (h.inWindow ? "" : " (overnight \u2014 next check at 7am)");
   }
+}
+
+function renderModeBadges(s) {
+  if (!s) return;
+  const set = (id, n) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = n ? String(n) : '';
+  };
+  set('badge-cards', s.new);
+  set('badge-todo', s.todo);
 }
 
 function renderTabs(s) {
@@ -749,6 +799,7 @@ async function decide(id, newStatus) {
     : newStatus === 'dismissed' ? 'Dismissed' : 'Put back', card);
   api('/api/summary').then(s => {
     renderTabs(s);
+    renderModeBadges(s);
     document.getElementById('stats').innerHTML =
       `<b>${s.new}</b> waiting · <b>${s.pending}</b> not scheduled yet · ${s.accepted} kept · ${s.dismissed} dismissed`;
   });
@@ -794,6 +845,7 @@ async function loadTodo() {
   const left = TODO.filter(c => !c.doneAt).length;
   document.getElementById('stats').innerHTML =
     `<b>${left}</b> to do · ${TODO.length - left} done`;
+  api('/api/summary').then(renderModeBadges).catch(() => {});
   renderFilters();
   renderTodo();
 }
@@ -824,8 +876,40 @@ function renderTodo() {
   list.innerHTML = head
     + section('Start now', now, 'now')
     + section('Coming up', soon)
-    + section('Done', done);
+    + doneSection(done);
 }
+
+// Folded shut by default, newest first, grouped by when it was crossed off
+// -- so an accidental tap is findable by remembering roughly when, which is
+// how anyone actually looks for it.
+let DONE_OPEN = false;
+
+function doneSection(items) {
+  if (!items.length) return '';
+  const head = `<button class="td-done-head" aria-expanded="${DONE_OPEN}"
+      onclick="toggleDoneList()"><span class="caret">▶</span>Done<span class="n">
+      ${items.length}</span></button>`;
+  if (!DONE_OPEN) return head;
+
+  const by = new Date();
+  const key = iso => {
+    if (!iso) return 'Earlier';
+    const d = new Date(iso), days = Math.floor((by - d) / 864e5);
+    if (days <= 0 && d.toDateString() === by.toDateString()) return 'Today';
+    if (days <= 1) return 'Yesterday';
+    if (days <= 7) return 'This week';
+    return 'Earlier';
+  };
+  const order = ['Today', 'Yesterday', 'This week', 'Earlier'];
+  const groups = {};
+  items.slice().sort((a, b) => String(b.doneAt).localeCompare(String(a.doneAt)))
+       .forEach(c => (groups[key(c.doneAt)] ||= []).push(c));
+
+  return head + order.filter(g => groups[g]).map(g =>
+    `<div class="td-when">${g}</div>` + groups[g].map(todoRow).join('')).join('');
+}
+
+function toggleDoneList() { DONE_OPEN = !DONE_OPEN; renderTodo(); }
 
 function section(label, items, cls) {
   if (!items.length) return '';

@@ -658,6 +658,11 @@ def summary(db):
         "new": count("SELECT COUNT(*) FROM dates WHERE status='new' AND pending=0"),
         "pending": count("SELECT COUNT(*) FROM dates WHERE status='new' AND pending=1"),
         "accepted": count("SELECT COUNT(*) FROM dates WHERE status='accepted'"),
+        # Taken on and not yet crossed off -- what the To-do tab actually
+        # holds, so its badge does not disagree with the list under it.
+        "todo": count("SELECT COUNT(*) FROM dates WHERE status='accepted' "
+                      "AND done_at IS NULL AND kind IS NOT 'session'"),
+        "done": count("SELECT COUNT(*) FROM dates WHERE done_at IS NOT NULL"),
         "dismissed": count("SELECT COUNT(*) FROM dates WHERE status='dismissed'"),
         "resolved": count("SELECT COUNT(*) FROM dates WHERE status='resolved'"),
         "spent": count("SELECT COALESCE(SUM(cost_usd), 0) FROM runs"),
