@@ -265,6 +265,21 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `prep.py` all go through it — it was once inline in `cards()` and the other
   two showed all five sections. `gcal.py --prune` cleans up anything accepted
   before the filter knew.
+- **A stale date and a mistyped year look identical, and the weekday tells
+  them apart.** GNG2101's Quiz 1 is switched on and dated 19 Sep **2025**,
+  opening 5:00 PM and due 5:45 PM -- a 45-minute slot. 19 Sep 2025 was a
+  Friday; a year later it is a Saturday, and a timed quiz does not move to a
+  Saturday. The same course's Mill/lathe pre-lab is correctly dated Tue 29
+  Sep **2026, 7:00 PM**, matching the student's own lab slot -- so this
+  professor does update dates, and one stale item is stale rather than
+  mistyped. MCG2130's eight assignments were the opposite: every weekday held.
+  Check the weekday before ever reaching for `--year-typo`.
+- **An active quiz carrying only last term's date is stored with no date.**
+  Dropping it hides real work; shifting the year invents a deadline. Neither
+  is acceptable, so `exact.py` stores it `pending` -- named but not scheduled
+  -- which is exactly what is true about it. Scoped to quizzes Brightspace
+  still has switched on (`IsActive`), because a reused shell is otherwise
+  full of stale items and this would become noise.
 - **A section setting can go stale, and then it hides everything.** GNG2101's
   lab sections were A1–A5 and became **C1–C3**; `me.json` still said `a4`,
   which matches nothing, so `only_mine()` would have dropped every real lab

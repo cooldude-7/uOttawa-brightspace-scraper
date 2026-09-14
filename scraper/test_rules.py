@@ -390,6 +390,33 @@ class ContentItemDueDates(unittest.TestCase):
                 collect.get = old_get
                 collect.TOPIC_DATES = old_cache
 
+    def test_an_active_quiz_with_only_last_terms_date_is_kept_undated(self):
+        """Dropping it hides real work; shifting the year invents a deadline.
+        GNG2101's Quiz 1 is switched on and dated 19 Sep 2025 -- a Friday,
+        which a year later is a Saturday, so the year is not simply a typo."""
+        import exact
+        db = fresh_db()
+        collected = [{
+            "id": 614949, "name": "GNG2101  C01  Into Prod Dev For En/Cs  [ LAB ]  20269",
+            "term": "20269", "assignments": [], "modules": [], "topics": [],
+            "calendar": [], "checklists": [],
+            "quizzes": [
+                {"Name": "Quiz 1: Online modules", "DueDate": "2025-09-19T21:45:00.000Z",
+                 "IsActive": True},
+                {"Name": "Quiz 2: switched off", "DueDate": "2025-09-26T21:45:00.000Z",
+                 "IsActive": False},
+            ]}]
+        added, dropped, shifted, undated = exact.load(
+            db, collected, ("2026-08-15", "2027-01-31"))
+
+        rows = db.execute("SELECT title, due_date, pending FROM dates").fetchall()
+        self.assertEqual(len(rows), 1, "only the active one is kept")
+        self.assertEqual(rows[0]["title"], "Quiz 1: Online modules")
+        self.assertIsNone(rows[0]["due_date"], "no date is invented for it")
+        self.assertEqual(rows[0]["pending"], 1, "it reads as not scheduled yet")
+        self.assertEqual([t for _, t, _ in undated], ["Quiz 1: Online modules"])
+        self.assertEqual([t for _, t, _ in dropped], ["Quiz 2: switched off"])
+
     def test_exact_stores_a_content_items_date(self):
         import exact
         db = fresh_db()
@@ -401,7 +428,7 @@ class ContentItemDueDates(unittest.TestCase):
                 {"id": 1, "title": "Arduino Pre-lab", "due": "2026-10-13T23:00:00.000Z"},
                 {"id": 2, "title": "Lecture slides", "due": None},
             ]}]
-        added, dropped, shifted = exact.load(db, collected, ("2026-08-15", "2027-01-31"))
+        added, dropped, shifted, _ = exact.load(db, collected, ("2026-08-15", "2027-01-31"))
         self.assertEqual(added, 1)
         row = db.execute("SELECT title, due_date, due_time FROM dates").fetchone()
         self.assertEqual(row["title"], "Arduino Pre-lab")

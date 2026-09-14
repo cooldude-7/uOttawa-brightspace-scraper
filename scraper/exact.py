@@ -53,16 +53,19 @@ def entries(course):
     for a in course.get("assignments", []):
         when = a.get("DueDate") or a.get("DisplayDue")
         if when:
-            out.append((a.get("Name"), when, "assignment"))
+            out.append((a.get("Name"), when, "assignment", None))
 
     for q in course.get("quizzes", []):
         when = q.get("DueDate") or q.get("EndDate") or q.get("DisplayDue")
         if when:
-            out.append((q.get("Name"), when, "quiz"))
+            # Whether Brightspace still has it switched on. A quiz that is
+            # active but carries last year's date is a real piece of work
+            # whose date the professor has not set yet -- see load().
+            out.append((q.get("Name"), when, "quiz", q.get("IsActive")))
 
     for m in course.get("modules", []):
         if m.get("due"):
-            out.append((m.get("title"), m["due"], "assignment"))
+            out.append((m.get("title"), m["due"], "assignment", None))
 
     # Content items. A pre-lab uploaded as a SCORM package is a real
     # deadline with no file to download, no description, and nothing in the
@@ -70,20 +73,20 @@ def entries(course):
     # here, and without this loop it went nowhere.
     for t in course.get("topics", []):
         if t.get("due"):
-            out.append((t.get("title"), t["due"], "assignment"))
+            out.append((t.get("title"), t["due"], "assignment", None))
 
     for e in course.get("calendar", []):
         when = e.get("StartDateTime") or e.get("EndDateTime")
         if when:
-            out.append((e.get("Title"), when, "session"))
+            out.append((e.get("Title"), when, "session", None))
 
     for cl in course.get("checklists", []):
         for item in cl.get("items", []):
             if item.get("due"):
                 out.append((item.get("Name") or item.get("name"),
-                            item["due"], "assignment"))
+                            item["due"], "assignment", None))
 
-    return [(title, when, kind) for title, when, kind in out if title]
+    return [e for e in out if e[0]]
 
 
 def load(db, collected, window=(None, None)):
@@ -99,12 +102,13 @@ def load(db, collected, window=(None, None)):
     added = 0
     dropped = []
     shifted = []
+    undated = []
 
     for course in collected:
         course_id = store.upsert_course(
             db, course["id"], course["name"], course.get("term"))
 
-        for title, stamp, kind in entries(course):
+        for title, stamp, kind, active in entries(course):
             if isinstance(stamp, dict):
                 # Straight off the page, and already in Ottawa time -- putting
                 # it through to_local() would shift it by five hours.
@@ -131,6 +135,26 @@ def load(db, collected, window=(None, None)):
             # one GNG2101 assignment still says June. Storing that would put
             # a deadline months in the past on the list.
             if start and not (start <= due <= end):
+                # But a quiz Brightspace still has switched on is a real
+                # piece of work whose date the professor has not updated.
+                # Dropping it hides the work; shifting the date invents one.
+                # Both are wrong, so it is stored with no date at all --
+                # which is exactly what "named but not scheduled" means.
+                if kind == "quiz" and active:
+                    added += store.save_dates(db, course_id, None, [{
+                        "title": title,
+                        "date": None,
+                        "time": None,
+                        "kind": kind,
+                        "confidence": "high",
+                        "pending": True,
+                        "source_excerpt": (
+                            f"Brightspace still has this quiz switched on, but the "
+                            f"only date on it is {due}, from a previous run of the "
+                            f"course. The date for this term has not been set."),
+                    }])
+                    undated.append((course["name"][:26], title, due))
+                    continue
                 dropped.append((course["name"][:26], title, due))
                 continue
 
@@ -143,4 +167,4 @@ def load(db, collected, window=(None, None)):
                 "source_excerpt": note,
             }])
 
-    return added, dropped, shifted
+    return added, dropped, shifted, undated

@@ -92,7 +92,7 @@ def scrape(argv):
     collected = json.loads(paths.COLLECTED.read_text(encoding="utf-8"))
     window = find_dates.term_window(find_dates.current_term())
     db = store.connect()
-    got, dropped, shifted = exact.load(db, collected, window)
+    got, dropped, shifted, undated = exact.load(db, collected, window)
     db.commit()
     db.close()
     print(f"  {got} stored" + (f", {len(dropped)} outside this term:" if dropped else ""))
@@ -104,6 +104,11 @@ def scrape(argv):
         print(f"      {due}  {course:<26} {str(title)[:34]}")
     if dropped:
         print("      (left over from a previous offering -- say if one of these is real)")
+    for course, title, was in undated:
+        print(f"      no date    {course:<26} {str(title)[:34]}")
+    if undated:
+        print("      (still switched on, but only carrying last term's date --")
+        print("       listed with no date rather than dropped or invented)")
 
     if not quiet:
         print("\n-- files " + "-" * 51)
