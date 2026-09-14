@@ -64,6 +64,14 @@ def entries(course):
         if m.get("due"):
             out.append((m.get("title"), m["due"], "assignment"))
 
+    # Content items. A pre-lab uploaded as a SCORM package is a real
+    # deadline with no file to download, no description, and nothing in the
+    # table of contents -- collect.fill_topic_dates() is what puts the date
+    # here, and without this loop it went nowhere.
+    for t in course.get("topics", []):
+        if t.get("due"):
+            out.append((t.get("title"), t["due"], "assignment"))
+
     for e in course.get("calendar", []):
         when = e.get("StartDateTime") or e.get("EndDateTime")
         if when:

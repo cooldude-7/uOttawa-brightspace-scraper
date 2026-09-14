@@ -158,6 +158,53 @@ class AutoForm(HTMLParser):
             self._in_form = False
 
 
+# The table of contents lists every content item but returns DueDate as null
+# even when the item has one. GNG2101's Arduino Pre-lab is due 13 October and
+# the table of contents says nothing -- the date exists only on the item's own
+# endpoint. Asking for every topic every scrape would be hundreds of requests
+# an hour, so answers are cached against the item's LastModifiedDate and only
+# re-asked when Brightspace says the item changed.
+TOPIC_DATES = paths.DATA / "topic_dates.json"
+
+
+def _topic_cache():
+    try:
+        return json.loads(TOPIC_DATES.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def fill_topic_dates(client, oid, topics):
+    """Fill in each content item's own due date. Returns how many were found."""
+    cache = _topic_cache()
+    found = changed = 0
+
+    for topic in topics:
+        tid = topic.get("id")
+        if tid is None or topic.get("due"):
+            continue
+        key = str(tid)
+        stamp = topic.get("modified") or ""
+        known = cache.get(key)
+        if isinstance(known, dict) and known.get("modified") == stamp:
+            due = known.get("due")
+        else:
+            record = get(client, f"/d2l/api/le/{LE}/{oid}/content/topics/{tid}")
+            due = (record or {}).get("DueDate")
+            cache[key] = {"modified": stamp, "due": due}
+            changed += 1
+        if due:
+            topic["due"] = due
+            found += 1
+
+    if changed:
+        try:
+            TOPIC_DATES.write_text(json.dumps(cache, indent=1), encoding="utf-8")
+        except OSError:
+            pass
+    return found
+
+
 def make_client(jar):
     client = httpx.Client(
         headers={"User-Agent": UA, "Accept": "application/json, text/plain, */*"},
@@ -416,6 +463,10 @@ def collect_course(client, course):
     print(f"  {name}")
 
     modules, topics = walk_content(client, oid)
+    found = fill_topic_dates(client, oid, topics)
+    if found:
+        print(f"    {found} due date{'s' if found != 1 else ''} on content items, "
+              f"which the table of contents does not carry")
 
     quizzes_raw = get(client, f"/d2l/api/le/{LE}/{oid}/quizzes/") or {}
     quizzes = quizzes_raw.get("Objects", []) if isinstance(quizzes_raw, dict) else []

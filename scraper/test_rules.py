@@ -21,13 +21,27 @@ from pathlib import Path
 import store
 
 
+_OPEN = []
+
+
 def fresh_db():
     """An in-memory database with the real schema and migrations."""
     db = sqlite3.connect(":memory:")
     db.row_factory = sqlite3.Row
     db.executescript(store.SCHEMA)
     store.migrate(db)
+    _OPEN.append(db)
     return db
+
+
+def tearDownModule():
+    # Python 3.13 warns about connections left open, and a suite that prints
+    # warnings is one whose real output stops being read.
+    while _OPEN:
+        try:
+            _OPEN.pop().close()
+        except Exception:
+            pass
 
 
 def add_course(db, d2l=1, name="GNG2101  C01  Into Prod Dev For En/Cs  [ LAB ]  20269"):
@@ -273,6 +287,73 @@ class PageDatesOnlyFillGaps(unittest.TestCase):
             self.assertEqual(out["Quiz 1"]["date"], "2026-09-14")
         finally:
             pagedates.page = original
+
+
+class ContentItemDueDates(unittest.TestCase):
+    """The table of contents returns DueDate as null even when the item has
+    one. GNG2101's Arduino Pre-lab is a SCORM package: no file to download,
+    no description, and a real deadline reachable only on its own endpoint."""
+
+    def test_a_topics_own_endpoint_is_asked_when_the_toc_says_nothing(self):
+        import collect
+        asked = []
+
+        def fake_get(client, path, **kw):
+            asked.append(path)
+            return {"DueDate": "2026-10-13T23:00:00.000Z"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            old_get, collect.get = collect.get, fake_get
+            old_cache, collect.TOPIC_DATES = collect.TOPIC_DATES, Path(tmp) / "topic_dates.json"
+            try:
+                topics = [
+                    {"id": 7746068, "title": "Arduino Pre-lab", "due": None,
+                     "modified": "2026-09-09T21:12:21.387Z"},
+                    {"id": 7746089, "title": "Lecture slides", "due": None,
+                     "modified": "2025-08-29T21:36:06.557Z"},
+                    {"id": 7746090, "title": "Already dated", "due": "2026-10-01T03:59:00.000Z",
+                     "modified": "2026-09-01T00:00:00.000Z"},
+                ]
+                found = collect.fill_topic_dates(None, 614949, topics)
+                self.assertEqual(found, 2)
+                self.assertEqual(topics[0]["due"], "2026-10-13T23:00:00.000Z")
+                self.assertEqual(len(asked), 2, "an item that already has a date is not re-asked")
+
+                # Second scrape, nothing modified: the cache answers, so a
+                # routine run does not re-ask Brightspace for every item.
+                asked.clear()
+                for t in topics[:2]:
+                    t["due"] = None
+                collect.fill_topic_dates(None, 614949, topics)
+                self.assertEqual(asked, [], "unchanged items must come from the cache")
+                self.assertEqual(topics[0]["due"], "2026-10-13T23:00:00.000Z")
+
+                # Brightspace says the item changed: ask again.
+                topics[0]["due"] = None
+                topics[0]["modified"] = "2026-10-01T10:00:00.000Z"
+                collect.fill_topic_dates(None, 614949, topics)
+                self.assertEqual(len(asked), 1, "a changed item is re-asked")
+            finally:
+                collect.get = old_get
+                collect.TOPIC_DATES = old_cache
+
+    def test_exact_stores_a_content_items_date(self):
+        import exact
+        db = fresh_db()
+        collected = [{
+            "id": 614949, "name": "GNG2101  C01  Into Prod Dev For En/Cs  [ LAB ]  20269",
+            "term": "20269", "assignments": [], "quizzes": [], "modules": [],
+            "calendar": [], "checklists": [],
+            "topics": [
+                {"id": 1, "title": "Arduino Pre-lab", "due": "2026-10-13T23:00:00.000Z"},
+                {"id": 2, "title": "Lecture slides", "due": None},
+            ]}]
+        added, dropped, shifted = exact.load(db, collected, ("2026-08-15", "2027-01-31"))
+        self.assertEqual(added, 1)
+        row = db.execute("SELECT title, due_date, due_time FROM dates").fetchone()
+        self.assertEqual(row["title"], "Arduino Pre-lab")
+        self.assertEqual(row["due_date"], "2026-10-13")
+        self.assertEqual(row["due_time"], "19:00", "23:00 UTC is 7pm in Ottawa in October")
 
 
 class BackupRoundTrip(unittest.TestCase):

@@ -219,6 +219,21 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   fills a date that is missing, never overrides one the API gave. GNG1106's
   LAB 1 was missing this way and nobody would have known. `probe_quiz.py`
   is how it was tracked down, if it happens again elsewhere.
+- **The table of contents returns `DueDate: null` even when the item has
+  one.** GNG2101's Arduino Pre-lab is due 13 October; `/content/toc` says
+  nothing, and the date exists only on the item's own
+  `/content/topics/{id}` endpoint. `collect.fill_topic_dates()` asks for it,
+  caching each answer against the item's `LastModifiedDate` so a routine
+  scrape re-asks for nothing -- without that it is hundreds of requests an
+  hour. And `exact.py` had no loop over `topics` at all, so even a date the
+  table of contents *did* carry went nowhere. Both halves were needed; either
+  alone still loses the deadline.
+- **A SCORM package is a deadline with nothing to download.** `TopicType` 11
+  / `ContentService`, with a `d2l:brightspace:content:...` URL that is an
+  internal identifier, not a path -- prefixing the host gives a 400, and
+  `/file` and `DirectFileTopicDownload` answer 404 and 403. There is no file.
+  The three GNG2101 pre-labs are these. Their value is the due date, which
+  the rule above now recovers.
 - **A content item's description is a place deadlines hide.** Brightspace
   lets a professor write a paragraph under an item ("Arduino Pre-lab") as
   well as under a folder. `find_dates.py` read folder descriptions from the
