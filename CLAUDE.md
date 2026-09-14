@@ -11,6 +11,17 @@ The user is a mechanical engineering student, not a programmer. Explain in
 plain language; avoid jargon or define it in one line. They run everything on
 **Windows** in `cmd`/PowerShell and paste terminal output back.
 
+**Whenever you give a command to run on the Pi, put the `ssh` line first, as
+its own block.** They may not be connected yet, and a Pi command pasted into
+Windows -- or a Windows path pasted into the Pi -- is a confusing failure that
+has cost several rounds. The prompt is the tell: `luca67@LUCAPI` is the Pi,
+anything else is not.
+
+    ssh luca67@LUCAPI.local        (skip if already in)
+
+    cd ~/uOttawa-brightspace-scraper && git pull origin main
+    ...
+
 ## State
 
 Working end to end: login → scrape → download → read → store → link tasks →
