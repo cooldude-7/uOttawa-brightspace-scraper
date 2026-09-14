@@ -262,6 +262,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   lead time but how many items sit in "start now" at once: if fifteen do, that
   reads exactly like none of them do. The To-do tab colours a start date only
   within a day of it, for the same reason.
+- **"Do I have to hand something in" has three answers, and one of them is
+  "don't know".** `store.submission()` reports yes / no / unsure from what was
+  actually read: an assignment or quiz from Brightspace has a submission
+  folder by definition, a document saying submit/upload/hand in is evidence,
+  and everything else -- "make a Tinkercad account", "bring safety glasses" --
+  comes back unsure, shown as *check if anything to hand in*. Resist making
+  that binary. Telling the user an account signup needed proof when it did
+  not is the same class of error as inventing a date.
 - **A linked date is inferred, not stated.** `linked_to` being set is what
   says so, and the card shows "before Lab 5" in a different colour for exactly
   that reason. Never let a linked date render as though a document published it.

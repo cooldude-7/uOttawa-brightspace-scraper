@@ -82,6 +82,8 @@ def as_card(row):
         "evidence": " ".join((row["source_excerpt"] or "").split()),
         # Set when this date was inferred by tying an undated task to
         # something dated, rather than read from a document.
+        "submit": store.submission(row)[0],
+        "submitWhy": store.submission(row)[1],
         "startBy": store.start_by(due, row["kind"]),
         "startDays": days_until(store.start_by(due, row["kind"])),
         "doneAt": row["done_at"] if "done_at" in row.keys() else None,

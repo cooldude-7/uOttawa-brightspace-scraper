@@ -442,6 +442,30 @@
   .td-done-head .n { text-transform: none; letter-spacing: 0; font-weight: 500; }
   .td-when { font-size: 11.5px; color: var(--muted); margin: 14px 2px 6px;
              text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+
+  /* The due date is what the eye is hunting for, so it gets its own line
+     and real size rather than sitting in a row of grey metadata. */
+  .td .due {
+    display: block; font-size: 14px; font-weight: 700; margin-top: 4px;
+    letter-spacing: -0.01em; font-variant-numeric: tabular-nums;
+    color: var(--chip-ink, var(--ink));
+  }
+  .td .due .at { font-weight: 650; }
+  .td .due .rel { font-weight: 500; color: var(--muted); }
+  .td.done .due { font-weight: 600; color: var(--muted); }
+
+  /* Whether anything leaves your hands. Three states on purpose: an
+     account signup may want proof or may want nothing, and a document
+     that never said leaves the app no business claiming either. */
+  .flag {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+    font-weight: 650; padding: 2px 7px; border-radius: 6px; letter-spacing: .01em;
+  }
+  .flag.yes { background: var(--mid-bg); color: var(--mid); }
+  .flag.unsure { background: var(--soon-bg); color: var(--soon); }
+  .td.done .flag { opacity: .6; }
+  .sheet .flag { font-size: 12px; padding: 3px 9px; align-self: flex-start; }
+  .sheet .flagwhy { font-size: 12.5px; color: var(--muted); margin-top: -4px; }
 </style>
 </head>
 <body>
@@ -478,6 +502,8 @@
   <div class="stitle" id="sheet-title"></div>
   <div class="swhen" id="sheet-when"></div>
   <div class="scourse" id="sheet-course"></div>
+  <div class="flag" id="sheet-flag"></div>
+  <div class="flagwhy" id="sheet-flagwhy"></div>
   <blockquote class="squote" id="sheet-quote"></blockquote>
   <div class="slinked" id="sheet-linked"></div>
   <div class="sacts">
@@ -922,7 +948,6 @@ const TICK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 function todoRow(c) {
   const late = !c.doneAt && c.startDays !== null && c.startDays < 0;
   const when = [];
-  if (c.when) when.push(`<span>due ${esc(c.when)}${c.time ? ' ' + esc(c.time) : ''}</span>`);
   if (c.linkedTo) when.push(`<span class="linked">before ${esc(c.linkedTo)}</span>`);
   if (!c.doneAt && c.startBy) {
     // Said as a nudge, not a date to decode -- and only coloured while it
@@ -935,13 +960,24 @@ function todoRow(c) {
       : d === 1 ? 'start tomorrow' : `start in ${d}d`}</span>`);
   }
   when.push(`<span class="course">${esc(c.courseCode)}</span>`);
+  if (c.submit === 'yes') when.push(`<span class="flag yes">hand in</span>`);
+  else if (c.submit === 'unsure') when.push(`<span class="flag unsure">check if anything to hand in</span>`);
 
-  return `<div class="td ${c.doneAt ? 'done' : ''} ${late ? 'late' : ''}" data-id="${c.id}">
+  const due = c.when
+    ? `<span class="due">${esc(c.when)}${c.time ? ` <span class="at">${esc(c.time)}</span>` : ''}${
+        c.days !== null && !c.doneAt ? ` <span class="rel">· ${
+          c.days < 0 ? `${-c.days}d ago` : c.days === 0 ? 'today'
+          : c.days === 1 ? 'tomorrow' : `in ${c.days}d`}</span>` : ''}</span>`
+    : `<span class="due"><span class="rel">no deadline</span></span>`;
+
+  return `<div class="td ${c.doneAt ? 'done' : ''} ${late ? 'late' : ''}"
+    data-id="${c.id}" data-urgency="${urgencyOf(c)}">
     <button class="tick" aria-pressed="${!!c.doneAt}"
       aria-label="${c.doneAt ? 'Not done after all' : 'Done'}"
       onclick="toggleDone(${c.id})"><i>${TICK}</i></button>
     <button class="open" onclick="openSheet(${c.id})">
       <span class="what">${esc(c.title)}</span>
+      ${due}
       <span class="when">${when.join('')}</span>
     </button></div>`;
 }
@@ -1155,6 +1191,13 @@ function openSheet(id) {
     ? `${esc(c.when)}${c.time ? ', ' + esc(c.time) : ''} <span>· ${soonText(c)}</span>`
     : `<span>${c.kind === 'todo' ? 'No deadline — a to-do' : 'Date not announced yet'}</span>`;
   document.getElementById('sheet-course').textContent = `${c.courseCode} · ${c.courseName || ''}`;
+  const flag = document.getElementById('sheet-flag');
+  const flagWhy = document.getElementById('sheet-flagwhy');
+  flag.className = 'flag ' + (c.submit || '');
+  flag.textContent = c.submit === 'yes' ? 'Something to hand in'
+    : c.submit === 'unsure' ? 'Not sure anything is handed in' : 'Nothing to hand in';
+  flag.hidden = false;
+  flagWhy.textContent = c.submitWhy || '';
   document.getElementById('sheet-quote').textContent = c.evidence ? '“' + c.evidence + '”' : 'No excerpt was stored for this one.';
   // A linked date is inferred, not stated -- it says so, in the colour
   // the card uses for the same thing.

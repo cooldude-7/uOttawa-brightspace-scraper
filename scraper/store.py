@@ -112,6 +112,42 @@ def start_by(due_date, kind):
     return (due - timedelta(days=lead_days(kind))).isoformat()
 
 
+# Words that mean something leaves your hands. Kept deliberately literal --
+# this reports what a document said, and guessing beyond that is how you end
+# up telling someone an account signup needed a submission when it did not.
+HANDS_IN = re.compile(
+    r"\b(submit|submission|upload|hand\s*in|turn\s*in|drop\s*box|dropbox|"
+    r"deliverable|attestation|due\s+on\s+brightspace|post\s+to|"
+    r"bring\s+(a\s+)?(printed|hard)\s+cop)", re.I)
+
+# Brightspace states these on the item itself, and an assignment or a quiz
+# there IS a submission folder -- that is what the endpoint returns.
+FROM_BRIGHTSPACE = "Brightspace lists this due date on the item itself"
+
+
+def submission(row):
+    """Whether something has to be handed in. -> ('yes'|'no'|'unsure', why).
+
+    The honest third state is the point. "Make a Tinkercad account" may want
+    proof or may want nothing, and a document that does not say leaves the
+    app with no business claiming either -- so it says it does not know,
+    which is the cue to go and look.
+    """
+    kind = (row["kind"] or "").lower()
+    if kind in ("session", "exam"):
+        return "no", "You attend this one."
+
+    excerpt = " ".join((row["source_excerpt"] or "").split())
+
+    if kind in ("assignment", "quiz") and FROM_BRIGHTSPACE in excerpt:
+        return "yes", "Brightspace has a submission folder for this."
+    if HANDS_IN.search(excerpt):
+        return "yes", "The document says something is handed in."
+    if kind in ("assignment", "quiz", "lab"):
+        return "yes", "An assignment, quiz or lab report is normally handed in."
+    return "unsure", "Nothing read so far says whether this gets handed in."
+
+
 def mark_done(db, date_id, done=True):
     db.execute("UPDATE dates SET done_at = ? WHERE id = ?",
                (now() if done else None, date_id))
