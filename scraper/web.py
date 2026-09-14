@@ -39,6 +39,11 @@ class Decision(BaseModel):
     status: str
 
 
+class Done(BaseModel):
+    id: int
+    done: bool = True
+
+
 def days_until(due):
     if not due:
         return None
@@ -77,6 +82,9 @@ def as_card(row):
         "evidence": " ".join((row["source_excerpt"] or "").split()),
         # Set when this date was inferred by tying an undated task to
         # something dated, rather than read from a document.
+        "startBy": store.start_by(due, row["kind"]),
+        "startDays": days_until(store.start_by(due, row["kind"])),
+        "doneAt": row["done_at"] if "done_at" in row.keys() else None,
         "linkedTo": row["linked_to"] if "linked_to" in row.keys() else None,
         "linkedWhy": row["linked_why"] if "linked_why" in row.keys() else None,
     }
@@ -104,6 +112,42 @@ def get_cards(status: str = "new", sessions: str = "all", all_sections: bool = F
             "value": c["course"], "code": c["courseCode"], "name": c["courseName"]})
     courses = sorted(by_name.values(), key=lambda c: (c["code"], c["name"]))
     return {"cards": cards, "courses": courses}
+
+
+@app.get("/api/todo")
+def get_todo():
+    """What you have taken on, ordered by when to begin rather than when it
+    is due. A deadline four days out that needs three days of work is more
+    urgent than one tomorrow you can finish in an hour, and a list sorted by
+    due date says the opposite.
+    """
+    db = store.connect()
+    try:
+        rows = store.only_mine(db.execute(
+            """SELECT d.*, c.d2l_id AS course_d2l_id, c.name AS course_name,
+                      c.code AS course_code
+               FROM dates d JOIN courses c ON c.id = d.course_id
+               WHERE d.status = 'accepted'
+               ORDER BY d.due_date IS NULL, d.due_date, d.due_time""").fetchall())
+        waiting = store.summary(db)["new"]
+    finally:
+        db.close()
+
+    cards = [as_card(r) for r in rows]
+    # A class in the timetable is attended, not worked on.
+    cards = [c for c in cards if c["kind"] != "session"]
+    return {"items": cards, "waiting": waiting}
+
+
+@app.post("/api/done")
+def set_done(mark: Done):
+    db = store.connect()
+    try:
+        store.mark_done(db, mark.id, mark.done)
+        db.commit()
+    finally:
+        db.close()
+    return {"ok": True, "id": mark.id, "done": mark.done}
 
 
 @app.get("/api/summary")

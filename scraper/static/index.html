@@ -348,6 +348,64 @@
   .sheet .sacts .drop { background: var(--no-bg); color: var(--ink); }
   .sheet .sacts button:active { transform: scale(.96); }
   .sheet .shint { font-size: 12.5px; color: var(--muted); text-align: center; margin-top: 4px; }
+
+  /* ----------------------------------------------------------- to-do
+     Crossing a thing off is a different question from accepting it.
+     Accepted says the deadline is real and yours; done says you have
+     finished it, and nothing said that before. */
+  .td-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; margin: 2px 2px 12px;
+  }
+  .td-head .lbl {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); font-weight: 600;
+  }
+  .td-head button {
+    background: none; border: 0; color: var(--accent); font: inherit;
+    font-size: 12.5px; cursor: pointer; padding: 0;
+  }
+  .td-group {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); font-weight: 600; margin: 20px 2px 9px;
+  }
+  .td-group:first-child { margin-top: 2px; }
+  .td-group.now { color: var(--now); }
+
+  .td { display: grid; grid-template-columns: auto 1fr; gap: 11px;
+        align-items: start; padding: 11px 12px; background: var(--card);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        margin-bottom: 8px; }
+  .td.late { border-color: var(--now); }
+  /* 44px of tappable area around a 22px circle: the target is the point,
+     not the drawing. */
+  .tick {
+    width: 44px; height: 44px; margin: -11px 0 -11px -11px; padding: 0;
+    border: 0; background: none; cursor: pointer; display: grid;
+    place-items: center; color: var(--muted);
+  }
+  .tick i {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid currentColor;
+    display: grid; place-items: center; font-style: normal;
+  }
+  .tick svg { width: 13px; height: 13px; opacity: 0; }
+  .td.done .tick { color: var(--yes); }
+  .td.done .tick i { background: var(--yes); border-color: var(--yes); color: #fff; }
+  .td.done .tick svg { opacity: 1; }
+  .tick:active i { transform: scale(.88); }
+  .tick i { transition: transform 100ms ease-out; }
+
+  .td .what { font-size: 15px; font-weight: 600; line-height: 1.3; }
+  .td.done .what { text-decoration: line-through; color: var(--muted); font-weight: 500; }
+  .td.done { opacity: .55; }
+  .td .when { font-size: 12px; color: var(--muted); margin-top: 3px;
+              display: flex; column-gap: 8px; row-gap: 2px; flex-wrap: wrap; }
+  .td .when .start { color: var(--now); font-weight: 650; }
+  .td .when .start.cool { color: var(--muted); font-weight: 500; }
+  .td .when .linked { color: var(--accent); }
+  .td .when .course { color: var(--ink); font-weight: 600; }
+  .td .open { background: none; border: 0; padding: 0; font: inherit;
+              text-align: left; color: inherit; cursor: pointer; width: 100%; }
 </style>
 </head>
 <body>
@@ -359,6 +417,7 @@
   <div class="tabs" id="modes">
     <button aria-pressed="true"  data-mode="cards"  onclick="setMode('cards')">Deadlines</button>
     <button aria-pressed="false" data-mode="agenda" onclick="setMode('agenda')">Agenda</button>
+    <button aria-pressed="false" data-mode="todo"   onclick="setMode('todo')">To-do</button>
     <button aria-pressed="false" data-mode="notes"  onclick="setMode('notes')">Notes</button>
   </div>
   <div class="tabs" id="tabs"></div>
@@ -482,12 +541,15 @@ function setMode(m) {
   document.querySelectorAll('#modes button').forEach(b =>
     b.setAttribute('aria-pressed', b.dataset.mode === m));
   document.getElementById('heading').textContent =
-    m === 'cards' ? 'Deadlines' : m === 'agenda' ? 'Agenda' : 'Notes';
+    m === 'cards' ? 'Deadlines' : m === 'agenda' ? 'Agenda'
+    : m === 'todo' ? 'To-do' : 'Notes';
   // The agenda is the waiting list laid out by day; kept and dismissed
   // items have already left it, so the status tabs do not apply.
   document.getElementById('tabs').style.display = m === 'cards' ? '' : 'none';
   if (m === 'agenda') status = 'new';
-  if (m === 'notes') loadNotes(); else load();
+  if (m === 'notes') loadNotes();
+  else if (m === 'todo') loadTodo();
+  else load();
 }
 
 async function loadNotes() {
@@ -555,7 +617,11 @@ function bucket(card) {
 
 const ORDER = ['Overdue', 'Today', 'Tomorrow', 'This week', 'This month', 'Later', 'No date yet'];
 
-function render() { if (MODE === 'agenda') renderAgenda(); else renderCards(); }
+function render() {
+  if (MODE === 'agenda') renderAgenda();
+  else if (MODE === 'todo') renderTodo();
+  else renderCards();
+}
 
 function renderCards() {
   const shown = CARDS.filter(c => course === 'all' || c.course === course);
@@ -698,6 +764,12 @@ function showUndo(what, card) {
 
 async function undoLast() {
   if (!lastAction) return;
+  if (lastAction.undo) {
+    const again = lastAction.undo;
+    lastAction = null;
+    document.getElementById('undo').classList.remove('show');
+    return again();
+  }
   await api('/api/decide', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({id: lastAction.id, status: 'new'})
@@ -705,6 +777,112 @@ async function undoLast() {
   document.getElementById('undo').classList.remove('show');
   lastAction = null;
   load();
+}
+
+// ------------------------------------------------------------------ to-do
+let TODO = [], WAITING = 0;
+
+async function loadTodo() {
+  const data = await api('/api/todo');
+  TODO = data.items || [];
+  CARDS = TODO;                       // so openSheet() can find them
+  WAITING = data.waiting || 0;
+  COURSES = [];
+  const seen = {};
+  TODO.forEach(c => { if (!seen[c.course]) { seen[c.course] = 1;
+    COURSES.push({ value: c.course, code: c.courseCode, name: c.courseName }); } });
+  const left = TODO.filter(c => !c.doneAt).length;
+  document.getElementById('stats').innerHTML =
+    `<b>${left}</b> to do · ${TODO.length - left} done`;
+  renderFilters();
+  renderTodo();
+}
+
+function renderTodo() {
+  const shown = TODO.filter(c => course === 'all' || c.course === course);
+  const list = document.getElementById('list');
+  const head = `<div class="td-head"><span class="lbl">Taken on</span>${
+    WAITING ? `<button onclick="setMode('agenda')">${WAITING} still waiting →</button>` : ''}</div>`;
+
+  if (!shown.length) {
+    list.innerHTML = head + `<div class="empty">Nothing here yet.${
+      WAITING ? '<br>Accept something in Agenda and it lands here.' : ''}</div>`;
+    return;
+  }
+
+  // Three buckets, and the order is the whole point: what should already
+  // have been started, then what is coming, then what is finished.
+  const now = [], soon = [], done = [];
+  shown.forEach(c => {
+    if (c.doneAt) done.push(c);
+    else if (c.startDays === null || c.startDays <= 0) now.push(c);
+    else soon.push(c);
+  });
+  const bySt = (a, b) => (a.startDays ?? 9e9) - (b.startDays ?? 9e9);
+  now.sort(bySt); soon.sort(bySt);
+
+  list.innerHTML = head
+    + section('Start now', now, 'now')
+    + section('Coming up', soon)
+    + section('Done', done);
+}
+
+function section(label, items, cls) {
+  if (!items.length) return '';
+  return `<div class="td-group ${cls || ''}">${label}</div>` + items.map(todoRow).join('');
+}
+
+const TICK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+
+function todoRow(c) {
+  const late = !c.doneAt && c.startDays !== null && c.startDays < 0;
+  const when = [];
+  if (c.when) when.push(`<span>due ${esc(c.when)}${c.time ? ' ' + esc(c.time) : ''}</span>`);
+  if (c.linkedTo) when.push(`<span class="linked">before ${esc(c.linkedTo)}</span>`);
+  if (!c.doneAt && c.startBy) {
+    // Said as a nudge, not a date to decode -- and only coloured while it
+    // means something. Amber on a start date three weeks out trains you to
+    // ignore amber, which is the one thing this must not do.
+    const d = c.startDays;
+    const hot = d !== null && d <= 1;
+    when.push(`<span class="start${hot ? '' : ' cool'}">${
+      d < 0 ? `${-d}d late starting` : d === 0 ? 'start today'
+      : d === 1 ? 'start tomorrow' : `start in ${d}d`}</span>`);
+  }
+  when.push(`<span class="course">${esc(c.courseCode)}</span>`);
+
+  return `<div class="td ${c.doneAt ? 'done' : ''} ${late ? 'late' : ''}" data-id="${c.id}">
+    <button class="tick" aria-pressed="${!!c.doneAt}"
+      aria-label="${c.doneAt ? 'Not done after all' : 'Done'}"
+      onclick="toggleDone(${c.id})"><i>${TICK}</i></button>
+    <button class="open" onclick="openSheet(${c.id})">
+      <span class="what">${esc(c.title)}</span>
+      <span class="when">${when.join('')}</span>
+    </button></div>`;
+}
+
+async function toggleDone(id) {
+  const c = TODO.find(x => x.id === id); if (!c) return;
+  const wasDone = !!c.doneAt;
+  c.doneAt = wasDone ? null : new Date().toISOString();
+
+  // Move it after the tick has been seen, not before -- crossing something
+  // out and having it vanish in the same frame loses the confirmation.
+  const row = document.querySelector(`.td[data-id="${id}"]`);
+  if (row) row.classList.toggle('done', !wasDone);
+  setTimeout(() => {
+    renderTodo();
+    const left = TODO.filter(x => !x.doneAt).length;
+    document.getElementById('stats').innerHTML =
+      `<b>${left}</b> to do · ${TODO.length - left} done`;
+  }, 320);
+
+  api('/api/done', { method: 'POST', headers: {'Content-Type': 'application/json'},
+                     body: JSON.stringify({ id, done: !wasDone }) })
+    .catch(() => { c.doneAt = wasDone ? c.doneAt : null; renderTodo(); });
+  showUndo(wasDone ? 'Back on the list' : 'Crossed off', c);
+  lastAction = { id, card: c, undo: () => toggleDone(id) };
 }
 
 // ------------------------------------------------------------------ agenda

@@ -18,7 +18,7 @@ import hashlib
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import paths
@@ -68,6 +68,53 @@ def load_prefs():
 
 def save_prefs(prefs):
     PREFS_PATH.write_text(json.dumps(prefs, indent=2), encoding="utf-8")
+
+
+# How far before a deadline you should have started, by kind of thing. The
+# numbers matter less than the count they produce: if fifteen items say
+# "start now" that reads exactly like none of them do. Kept in me.json so
+# they can be tuned after a week of living with them, without a code change.
+LEAD_DAYS = {
+    "todo": 2,
+    "assignment": 3,
+    "lab": 4,
+    "quiz": 5,
+    "exam": 10,
+    "session": 0,     # a class or a lab session is attended, not prepared for
+    "other": 3,
+}
+
+
+def lead_days(kind):
+    override = (load_prefs().get("lead_days") or {})
+    key = (kind or "other").lower()
+    if key in override:
+        try:
+            return max(0, int(override[key]))
+        except (TypeError, ValueError):
+            pass
+    return LEAD_DAYS.get(key, LEAD_DAYS["other"])
+
+
+def start_by(due_date, kind):
+    """The day to begin, or None when there is no date to work back from.
+
+    Derived rather than stored, so changing a lead time in me.json moves
+    every affected item at once -- and so a date corrected later (a year
+    typo, a professor moving a quiz) cannot leave a stale start date behind.
+    """
+    if not due_date:
+        return None
+    try:
+        due = datetime.strptime(due_date, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+    return (due - timedelta(days=lead_days(kind))).isoformat()
+
+
+def mark_done(db, date_id, done=True):
+    db.execute("UPDATE dates SET done_at = ? WHERE id = ?",
+               (now() if done else None, date_id))
 
 
 def fix_year(course_name, when):
@@ -235,6 +282,11 @@ def migrate(db):
         db.execute("ALTER TABLE dates ADD COLUMN linked_to TEXT")
     if "linked_why" not in columns:
         db.execute("ALTER TABLE dates ADD COLUMN linked_why TEXT")
+    # Crossed off. A separate axis from accepted/dismissed, which say whether
+    # a deadline is real and yours -- neither of them ever said you had done
+    # it, so the kept list only ever grew.
+    if "done_at" not in columns:
+        db.execute("ALTER TABLE dates ADD COLUMN done_at TEXT")
     missing = db.execute(
         "SELECT id, title FROM dates WHERE resolved_title IS NULL").fetchall()
     for row in missing:
