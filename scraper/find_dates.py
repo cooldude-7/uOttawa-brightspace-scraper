@@ -345,6 +345,18 @@ def load_documents(all_docs):
                 if (m.get("description") or "").strip():
                     add(course, "folder", (m.get("title") or "")[:80], m["description"])
 
+            # A content item's own description -- the paragraph a professor
+            # writes under "Arduino Pre-lab" in Brightspace. Folder
+            # descriptions were read and these were not, so "install the IDE
+            # before the lab" written there reached nothing at all. It also
+            # partly recovers an item whose file will not download: the
+            # attachment is lost, the instructions around it are not.
+            for t in course.get("topics", []):
+                body = deep_text(t.get("description"))
+                if body.strip():
+                    add(course, "item", (t.get("title") or "")[:80],
+                        with_known(t.get("title"), t.get("due"), body))
+
             # Discussions: a professor answering "when is this due" in a
             # thread is often the only place that date is written down.
             for forum in course.get("discussions", []):

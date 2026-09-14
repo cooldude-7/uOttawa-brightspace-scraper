@@ -216,6 +216,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   fills a date that is missing, never overrides one the API gave. GNG1106's
   LAB 1 was missing this way and nobody would have known. `probe_quiz.py`
   is how it was tracked down, if it happens again elsewhere.
+- **A content item's description is a place deadlines hide.** Brightspace
+  lets a professor write a paragraph under an item ("Arduino Pre-lab") as
+  well as under a folder. `find_dates.py` read folder descriptions from the
+  start and item descriptions not at all, so "install the IDE before the lab"
+  written there reached nothing -- no error, no missing file, simply never
+  looked at. Now read as kind `item`. It also partly covers an item whose
+  attachment will not download: the file is lost, the instructions around it
+  are not.
 - **Course shells are reused between terms.** Stale dates from previous
   offerings appear in folder text *and* in Brightspace's own due-date fields —
   one assignment still says June. Everything is filtered to the term window.

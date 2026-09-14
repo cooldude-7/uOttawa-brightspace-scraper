@@ -573,7 +573,9 @@ def main(term_override=None, client=None):
     total_prose = 0
     for c in collected:
         exact = count_dates(c)
-        prose = len(c["announcements"]) + sum(1 for m in c["modules"] if m["description"])
+        prose = (len(c["announcements"])
+                 + sum(1 for m in c["modules"] if m["description"])
+                 + sum(1 for t in c["topics"] if (t.get("description") or "").strip()))
         total_exact += len(exact)
         total_prose += prose
         posts = sum(len(t["posts"]) for d in c.get("discussions", [])
