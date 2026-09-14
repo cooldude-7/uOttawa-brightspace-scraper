@@ -96,8 +96,10 @@ repo on every scrape, pulling and rebasing first so the laptop can write too.
 The Mac and the laptop both hold clones; Obsidian's Git plugin pulls every
 five minutes so neither needs a command.
 
-**The app has three views**: the deadline cards, **Agenda** (the term laid out
-by day, with ✓/✕ on each row and a drag-to-dismiss detail sheet), and Notes.
+**The app has four views**: the deadline cards, **Agenda** (the term laid out
+by day, with ✓/✕ on each row and a drag-to-dismiss detail sheet), **To-do**
+(what you have taken on, ordered by when to begin, with somewhere to cross it
+off), and Notes.
 Agenda and the card exit animations are built on springs — see the physics
 block in `static/index.html`, distilled from Apple's *Designing Fluid
 Interfaces*. Cards leave in the direction of the decision.
@@ -236,6 +238,19 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   deleting that line claims a note permanently. `Notes/` is never generated at
   all, and `Skills/` is seeded once. Weakening this to "just regenerate
   everything" would cost the user work they cannot get back.
+- **Done is a third axis, not a status.** Accepted says a deadline is real
+  and yours; dismissed says it is not. Neither ever said you had finished it,
+  so the kept list only grew. `done_at` is that, and the To-do tab is where it
+  gets crossed off. Crossing something off never touches Google Calendar --
+  it still happened.
+- **Start dates are derived, never stored.** `store.start_by()` works back
+  from the due date by `LEAD_DAYS` for the kind of thing (exam 10 days, quiz
+  5, lab 4, assignment 3, to-do 2), overridable per kind in `me.json`. Derived
+  so a corrected date or a retuned lead time moves everything at once and
+  cannot strand a stale start date. The number that matters is not any single
+  lead time but how many items sit in "start now" at once: if fifteen do, that
+  reads exactly like none of them do. The To-do tab colours a start date only
+  within a day of it, for the same reason.
 - **A linked date is inferred, not stated.** `linked_to` being set is what
   says so, and the card shows "before Lab 5" in a different colour for exactly
   that reason. Never let a linked date render as though a document published it.
