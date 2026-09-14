@@ -136,6 +136,9 @@ python gcal.py --prune     drop other sections' deadlines already accepted
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
+python test_rules.py       the rules that must never break (no deps, ~0.1s)
+python backup.py           dump the database into the vault
+python backup.py --restore rebuild a database from that dump
 python exams.py            every exam, and which courses have none yet
 python exams.py --on 2026-10-23   just that day
 python store.py --year-typo MCG2130 2025 2026    a year the prof mistyped
@@ -253,6 +256,16 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   measured data, results and graphs are never generated — not a reading, not a
   trend, not a plausible number in a table. A fabricated measurement does not
   stay in a draft, it gets submitted.
+- **The database is the one irreplaceable thing.** The vault is pushed to
+  git every scrape; the database holds every decision and the `text_hash`
+  memory that is the only reason a scrape costs $0.00 rather than re-reading
+  90,000 words, and it lived on one USB stick. `backup.py` writes a SQL dump
+  into the vault each scrape so the existing push carries it off the Pi.
+  Text, not a binary copy: git stores successive versions of text as small
+  differences, and a dump can be read and restored with nothing but sqlite3.
+  The `runs` table is left out deliberately -- it gains a row every hour
+  whether or not anything changed, and including it would make the vault
+  commit hourly forever and bury the history of real changes.
 - **The vault must never eat the user's writing.** A generated note carries
   `generated: true`; `vault.py` refuses to overwrite any file without it, so
   deleting that line claims a note permanently. `Notes/` is never generated at
@@ -332,6 +345,26 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `google_token.json`, `session.json`. The session file now holds sign-on
   cookies — a bearer token for the whole uOttawa account. Treat it seriously,
   especially once it lives on the Pi.
+
+## Before you change anything
+
+    python test_rules.py
+
+Sixteen tests, standard library only, a tenth of a second. They are not
+coverage -- they are a guard on the handful of behaviours where being wrong
+is expensive **and silent**: the year-typo rule firing on a course it was
+not declared for, a linked to-do absorbing a real deadline, another
+section's deadlines reaching the list, a dismissed item coming back, the
+vault overwriting something you wrote, `pretty_time`/`parse_time`
+disagreeing so an accepted deadline never reaches the calendar.
+
+Every case in there is a bug that actually happened. They were checked by
+deliberately re-breaking each rule and confirming the suite failed, which is
+the only evidence a test is worth having.
+
+If you add a rule of that kind, add a test. If a test fails, the code is
+wrong until proven otherwise -- the last time one disagreed with the code it
+was the test that was wrong, but that is the exception and it took evidence.
 
 ## Working style that has worked here
 

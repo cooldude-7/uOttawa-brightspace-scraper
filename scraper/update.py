@@ -14,6 +14,7 @@ import sys
 import time
 from datetime import datetime
 
+import backup
 import collect
 import download
 import exact
@@ -133,6 +134,10 @@ def scrape(argv):
         print("\n-- vault " + "-" * 51)
     try:
         vault.build()
+        # Into the vault before it is pushed, so the one irreplaceable thing
+        # here -- every decision, and the text_hash memory that keeps a
+        # scrape free -- stops living only on one USB stick.
+        backup.dump()
         vault.push(paths.VAULT, quiet=True)
     except Exception as e:
         # Same reasoning as link_tasks: a vault that failed to rebuild is an
