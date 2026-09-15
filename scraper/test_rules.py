@@ -577,5 +577,126 @@ class BackupRoundTrip(unittest.TestCase):
                 store._prepared = old_prepared
 
 
+class SupersededDatesAreRetiredSafely(unittest.TestCase):
+    """A correction rule outlives the typo, and its rows stay behind.
+
+    MCG2130: the professor had last year's dates, --year-typo shifted them,
+    then he fixed his own dates. Both sets ended up stored, a day apart, and
+    the stale one sits later -- the direction that loses marks. The retiring
+    rule must never fire unless the real date is already on file.
+    """
+
+    def _collected(self, d2l, name, items):
+        return [{"id": d2l, "name": name,
+                 "assignments": [{"Name": n, "DueDate": w} for n, w in items]}]
+
+    def _find(self, db, collected, only=None):
+        import json
+
+        import paths
+        import supersede
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "collected.json"
+            path.write_text(json.dumps(collected), encoding="utf-8")
+            old, paths.COLLECTED = paths.COLLECTED, path
+            try:
+                return supersede.find(db, only)
+            finally:
+                paths.COLLECTED = old
+
+    def test_the_stale_twin_goes_and_the_real_one_stays(self):
+        db = fresh_db()
+        name = "MCG2130  A00  (2026 Fall) Thermodynamics I  20269"
+        cid = add_course(db, d2l=7, name=name)
+        # 2026-09-19T03:00Z is Fri 18 Sep 23:00 in Ottawa -- the real deadline.
+        real = add_date(db, cid, "Assignment #1", "2026-09-18", "23:00", key="k1")
+        stale = add_date(db, cid, "Assignment #1", "2026-09-19", "23:00", key="k2")
+        db.commit()
+
+        found = self._find(db, self._collected(
+            7, name, [("Assignment #1", "2026-09-19T03:00:00.000Z")]))
+
+        self.assertEqual([r["id"] for r, _c, _p in found], [stale],
+                         "only the date Brightspace no longer publishes goes")
+        self.assertNotIn(real, [r["id"] for r, _c, _p in found],
+                         "the real deadline must never be retired")
+
+    def test_nothing_goes_when_the_real_date_is_not_on_file(self):
+        """The condition that makes this safe at all.
+
+        If the only stored row disagrees with Brightspace, that is a date to
+        look at, not one to delete -- retiring it would leave the course with
+        no record of the deadline whatsoever.
+        """
+        db = fresh_db()
+        name = "MCG2130  A00  (2026 Fall) Thermodynamics I  20269"
+        cid = add_course(db, d2l=7, name=name)
+        add_date(db, cid, "Assignment #1", "2026-09-19", "23:00", key="k3")
+        db.commit()
+
+        found = self._find(db, self._collected(
+            7, name, [("Assignment #1", "2026-09-19T03:00:00.000Z")]))
+        self.assertEqual(found, [], "never retire the only record of a deadline")
+
+    def test_an_item_brightspace_stopped_publishing_is_left_alone(self):
+        """Silence is not a correction. A withdrawn item keeps its rows."""
+        db = fresh_db()
+        name = "MCG2130  A00  (2026 Fall) Thermodynamics I  20269"
+        cid = add_course(db, d2l=7, name=name)
+        add_date(db, cid, "Assignment #1", "2026-09-18", "23:00", key="k4")
+        add_date(db, cid, "Assignment #1", "2026-09-19", "23:00", key="k5")
+        db.commit()
+
+        found = self._find(db, self._collected(
+            7, name, [("Assignment #9", "2026-12-01T03:00:00.000Z")]))
+        self.assertEqual(found, [])
+
+    def test_two_real_published_dates_both_survive(self):
+        """A due date and a close date are both real. Neither supersedes."""
+        db = fresh_db()
+        name = "MCG2130  A00  (2026 Fall) Thermodynamics I  20269"
+        cid = add_course(db, d2l=7, name=name)
+        add_date(db, cid, "Assignment #1", "2026-09-18", "23:00", key="k6")
+        add_date(db, cid, "Assignment #1", "2026-09-19", "23:00", key="k7")
+        db.commit()
+
+        found = self._find(db, self._collected(7, name, [
+            ("Assignment #1", "2026-09-19T03:00:00.000Z"),
+            ("Assignment #1", "2026-09-20T03:00:00.000Z")]))
+        self.assertEqual(found, [], "both dates are published, so both are real")
+
+    def test_a_linked_todo_is_never_retired(self):
+        """It carries its anchor's date, so it always looks like a twin."""
+        db = fresh_db()
+        name = "MCG2130  A00  (2026 Fall) Thermodynamics I  20269"
+        cid = add_course(db, d2l=7, name=name)
+        add_date(db, cid, "Assignment #1", "2026-09-18", "23:00", key="k8")
+        add_date(db, cid, "Assignment #1", "2026-09-19", "23:00",
+                 linked="Assignment #1", key="k9")
+        db.commit()
+
+        found = self._find(db, self._collected(
+            7, name, [("Assignment #1", "2026-09-19T03:00:00.000Z")]))
+        self.assertEqual(found, [], "a linked to-do is not a stale duplicate")
+
+    def test_another_course_is_untouched(self):
+        db = fresh_db()
+        mcg = "MCG2130  A00  (2026 Fall) Thermodynamics I  20269"
+        gng = "GNG2101  C01  Into Prod Dev For En/Cs  [ LAB ]  20269"
+        a = add_course(db, d2l=7, name=mcg)
+        b = add_course(db, d2l=8, name=gng)
+        add_date(db, a, "Assignment #1", "2026-09-18", "23:00", key="k10")
+        add_date(db, a, "Assignment #1", "2026-09-19", "23:00", key="k11")
+        add_date(db, b, "Deliverable A", "2026-09-18", "23:00", key="k12")
+        add_date(db, b, "Deliverable A", "2026-09-19", "23:00", key="k13")
+        db.commit()
+
+        collected = (self._collected(7, mcg, [("Assignment #1", "2026-09-19T03:00:00.000Z")])
+                     + self._collected(8, gng, [("Deliverable A", "2026-09-19T03:00:00.000Z")]))
+        found = self._find(db, collected, only="MCG2130")
+        self.assertEqual({c for _r, c, _p in found}, {"MCG2130"})
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -920,10 +920,24 @@ if __name__ == "__main__":
     # python store.py --year-typo MCG2130 2025 2026 "the prof mistyped it"
     if "--year-typo" in sys.argv:
         i = sys.argv.index("--year-typo")
+        # A typo gets fixed at the source, and then the rule is the problem:
+        # left armed, it goes on pulling that course's genuinely stale dates
+        # into this year -- exactly the harm it was written to avoid causing.
+        if len(sys.argv) > i + 2 and sys.argv[i + 2].lower() in ("off", "none", "remove"):
+            code = sys.argv[i + 1].upper()
+            prefs = load_prefs()
+            if (prefs.get("year_typos") or {}).pop(code, None) is None:
+                sys.exit(f"  No year typo was declared for {code}.")
+            save_prefs(prefs)
+            print(f"  {code}: year typo rule removed. Dates are read as written.")
+            print("  Rows it already wrote are not undone -- see "
+                  "`python supersede.py`.")
+            sys.exit(0)
         try:
             code, wrong, right = sys.argv[i + 1], int(sys.argv[i + 2]), int(sys.argv[i + 3])
         except (IndexError, ValueError):
-            sys.exit("usage: python store.py --year-typo CODE WRONGYEAR RIGHTYEAR [\"why\"]")
+            sys.exit("usage: python store.py --year-typo CODE WRONGYEAR RIGHTYEAR [\"why\"]"
+                     "\n       python store.py --year-typo CODE off")
         why = sys.argv[i + 4] if len(sys.argv) > i + 4 else ""
         prefs = load_prefs()
         prefs.setdefault("year_typos", {})[code.upper()] = {
