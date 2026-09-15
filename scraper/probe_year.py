@@ -1,26 +1,22 @@
 r"""
-Check a year-typo correction against the weekday it lands on.
+Check what a year-typo correction actually put in the database.
 
     python probe_year.py              every course with a year typo declared
     python probe_year.py MCG2130      just that one
+    python probe_year.py MCG2130 --raw   every date field Brightspace returns
 
-`store.fix_year()` corrects a year a professor mistyped by replacing the
-year and keeping the month and day: 2025-09-19 becomes 2026-09-19. That is
-the obvious reading of "he meant 2026", and for a date a professor typed
-fresh it is right.
+`store.fix_year()` corrects a year a professor mistyped, and the risk it
+carries is that the correction outlives the problem. Once the professor
+fixes his own dates in Brightspace the rule stops firing -- but the rows it
+already wrote stay, sitting beside the new correct ones as a second deadline
+a day or so away. MCG2130 was exactly this: eight assignments, sixteen rows.
 
-It is wrong for a date that came from last year's course shell, and that is
-the common case. A year is 52 weeks plus a day, so the same calendar date
-one year later falls on the *next* weekday: Friday 19 Sep 2025 becomes
-Saturday 19 Sep 2026. Coursework does not move to Saturday. The professor
-reusing a shell means the same Friday, which is 18 Sep -- 364 days on, not
-365.
+So this prints every stored date in the corrected year with where it came
+from and when it first appeared, and flags any title stored on more than one
+date. `--raw` prints what Brightspace publishes today, which is what decides
+it: a date no longer in that list is a leftover, not a deadline.
 
-The two readings differ by exactly one day, which is small enough to go
-unnoticed and large enough to miss a deadline. This prints both for every
-date a typo rule touched, with the weekday on each, so the student can say
-which one matches what they were told. It reads the database and changes
-nothing.
+It reads the database and changes nothing.
 """
 
 import datetime
@@ -35,24 +31,6 @@ def weekday(iso):
         return datetime.date.fromisoformat(iso).strftime("%a")
     except (TypeError, ValueError):
         return "???"
-
-
-def same_weekday(iso, right_year):
-    """The date in `right_year` that keeps `iso`'s weekday. -> iso | None.
-
-    Nearest to the naive same-date answer, so it is that date give or take
-    a few days rather than a different week.
-    """
-    try:
-        was = datetime.date.fromisoformat(iso)
-        naive = datetime.date(right_year, was.month, was.day)
-    except (TypeError, ValueError):
-        return None
-    for delta in (0, -1, 1, -2, 2, -3, 3):
-        candidate = naive + datetime.timedelta(days=delta)
-        if candidate.weekday() == was.weekday():
-            return candidate.isoformat()
-    return None
 
 
 DATE_FIELD = re.compile(r"date|due|end|start", re.I)
@@ -115,8 +93,10 @@ def main(argv):
 
     db = store.connect()
     rows = db.execute(
-        "SELECT d.title, d.due_date, d.due_time, c.name AS course"
+        "SELECT d.title, d.due_date, d.due_time, d.status, d.first_seen,"
+        "       c.name AS course, doc.title AS doc"
         "  FROM dates d JOIN courses c ON c.id = d.course_id"
+        "  LEFT JOIN documents doc ON doc.id = d.document_id"
         " WHERE d.due_date IS NOT NULL AND d.due_date != ''"
         " ORDER BY d.due_date"
     ).fetchall()
@@ -140,33 +120,30 @@ def main(argv):
                   "not run since, or these items were dropped.")
             continue
 
-        print(f"  {'was':<16} {'stored now':<16} {'same weekday':<16} title")
-        disagree = 0
+        print(f"  {'due':<16} {'time':<8} {'status':<9} {'first seen':<11} "
+              f"{'from':<22} title")
         for r in mine:
             now = r["due_date"]
-            was = f"{wrong}{now[4:]}"
-            keep = same_weekday(was, right)
-            flag = ""
-            if keep and keep != now:
-                disagree += 1
-                flag = "  <-- differs"
-            time = store.pretty_time(r["due_time"]) if r["due_time"] else ""
-            print(f"  {was} {weekday(was):<4} "
-                  f"{now} {weekday(now):<4} "
-                  f"{(keep or '-'):<11} {weekday(keep) if keep else '':<4} "
-                  f"{str(r['title'])[:32]} {time}{flag}")
+            src = r["doc"] or "(Brightspace field)"
+            time = store.pretty_time(r["due_time"]) if r["due_time"] else "-"
+            print(f"  {now} {weekday(now):<4} {time:<8} "
+                  f"{(r['status'] or '?'):<9} {str(r['first_seen'])[:10]:<11} "
+                  f"{str(src)[:22]:<22} {str(r['title'])[:30]}")
 
-        if disagree:
-            print(f"\n  {disagree} of {len(mine)} land on a different weekday than "
-                  f"they did in {wrong}.")
-            print("  If the professor reused last year's shell, the 'same weekday' "
-                  "column is what he means.")
-            print("  If he typed these dates fresh for this year, 'stored now' is.")
-            print("  Check one against a document or what he said in class, then "
-                  "tell me which -- do not guess.")
-        else:
-            print("\n  Every date keeps its weekday. The correction is consistent "
-                  "either way.")
+        # A title stored twice on two dates is the thing worth seeing.
+        seen = {}
+        for r in mine:
+            seen.setdefault(str(r["title"]).strip(), []).append(r)
+        twins = {k: v for k, v in seen.items() if len(v) > 1}
+        if twins:
+            print(f"\n  {len(twins)} title(s) stored on more than one date:")
+            for title, rows_ in sorted(twins.items()):
+                days = ", ".join(f"{x['due_date']} {weekday(x['due_date'])}"
+                                 for x in rows_)
+                print(f"    {title[:34]:<34} {days}")
+            print("\n  Compare each against `--raw`. A date Brightspace no longer"
+                  " publishes is a\n  leftover from an earlier scrape, not a second"
+                  " deadline.")
 
     db.close()
     return 0

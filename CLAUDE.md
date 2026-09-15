@@ -281,34 +281,31 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   professor does update dates, and one stale item is stale rather than
   mistyped. MCG2130's eight assignments were the opposite: every weekday held.
   Check the weekday before ever reaching for `--year-typo`.
-- **Correcting a mistyped year moves the weekday, and that is not by itself
-  a bug.** `fix_year()` replaces the year and keeps the month and day, so
-  2025-09-18 becomes 2026-09-18. A year is 52 weeks *plus a day*, so the
-  weekday shifts: Thursday becomes Friday. That looked wrong and was
-  checked against the document, which settled it -- MCG2130's Assignment #1
-  PDF says "Fall 2026 ... Due: Sept 18th (Friday) at 11:00 PM", exactly the
-  corrected date. This professor typed the dates fresh for this year and got
-  only the year wrong, so the **day of the month** is what he meant and the
-  plain year swap is right. Do not "fix" it to preserve the weekday.
-  `probe_year.py` prints both readings with weekdays for every date a typo
-  rule touched; `probe_year.py MCG2130 --raw` dumps the raw Brightspace
-  fields behind them.
-- **An assignment folder publishes two dates, and both get stored.**
-  MCG2130's eight assignments are sixteen rows, each a Thursday/Friday pair
-  one day apart at the same time -- `DueDate` and a second field, almost
-  certainly the late-submission cutoff. `exact.py` reads `DueDate` for an
-  assignment, so the twin comes from another source in the same course
-  (`modules`, `topics` or `calendar`) carrying the same title. They survive
-  deduplication because a different date means a different `event_key`. The
-  danger is specific: the later row is a real date Brightspace holds, so it
-  cannot simply be dropped, but showing it beside the real deadline invites
-  handing in a day late.
+- **A year-typo correction outlives the typo, and the old rows stay.** This
+  is the real MCG2130 story and it took three rounds to see. The professor
+  had last year's dates in Brightspace, `--year-typo MCG2130 2025 2026`
+  shifted them, and **he has since fixed them himself** -- `DueDate` now
+  reads `2026-09-19T03:00:00.000Z`, which `to_local()` turns into Fri 18 Sep
+  23:00, matching the assignment PDF's "Fall 2026 ... Due: Sept 18th
+  (Friday) at 11:00 PM" exactly. The new correct rows were stored alongside
+  the old shifted ones: eight assignments, **sixteen rows**, each pair a day
+  apart at the same time. Deduplication cannot help -- a different date is a
+  different `event_key` -- and the stale one sits a day *later*, which is
+  the direction that loses marks. A correction rule needs retiring once the
+  source is fixed, and the rows it wrote need removing with it; `fix_year()`
+  going quiet is not the same as its output going away.
+- **Don't build a column that looks like data and isn't.** The first version
+  of `probe_year.py` printed a "was" column by swapping the corrected year
+  back -- a reconstruction, not anything read from the database. It implied
+  Brightspace still held 2025 dates when it no longer did, and cost a round
+  on a theory (shift by weekday, not by date) that the real `DueDate` then
+  disproved outright. The probe now prints `first_seen` and the source
+  document, and `--raw` prints what Brightspace publishes today.
 - **That assignment was never readable.** MCG2130's "Assignment #1" and "#2"
   answer HTTP 404 on download, so `find_dates.py` has never seen a word of
-  them and the stored date came from Brightspace's fields alone. The student
-  found the duplicate by opening the PDF themselves. A document the scraper
-  cannot fetch is a deadline with no second opinion -- the 404s are worth
-  chasing.
+  them. The student found the duplicate by opening the PDF themselves. A
+  document the scraper cannot fetch is a deadline with no second opinion --
+  the 404s are worth chasing.
 - **An active quiz carrying only last term's date is stored with no date.**
   Dropping it hides real work; shifting the year invents a deadline. Neither
   is acceptable, so `exact.py` stores it `pending` -- named but not scheduled
