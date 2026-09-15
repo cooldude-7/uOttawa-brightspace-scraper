@@ -136,6 +136,7 @@ python gcal.py --prune     drop other sections' deadlines already accepted
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
+python posted_work.py      documents that ARE work; --store to keep them
 python test_rules.py       the rules that must never break (no deps, ~0.1s)
 python backup.py           dump the database into the vault
 python backup.py --restore rebuild a database from that dump
@@ -358,6 +359,20 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   "%H:%M")` directly, so a model returning "7:00 PM" instead of the 19:00 the
   prompt asks for would have raised and quietly cost an accepted deadline its
   calendar entry.
+- **Some documents ARE the work, rather than mentioning it.** A DGD
+  question sheet states no date, so `find_dates.py` correctly finds nothing
+  in it and it never reached the list -- the student asked why their linear
+  algebra practice questions were missing, and that was the answer.
+  `posted_work.py` recognises them **by title** (`dgd`, `questions`,
+  `problem set`, `exercises`, `practice`, `worksheet`, `tutorial`), minus
+  the false friends (`solutions`, `answers`, `filled`, `faq`, `syllabus`),
+  and stores each as a to-do with **no date**, because none exists. Chosen
+  over asking the model per document: that needs every document re-read
+  (~$3), and here the cost of being wrong is one row dismissed rather than
+  a missed submission -- plus a title rule is one the student can read and
+  argue with. Measured on the real corpus: 3 of 26 titles, all genuine.
+  Stored with `linked_to = ''` so `link_tasks.py` never pays to consider
+  them -- by definition they have no anchor.
 - **A linked date is inferred, not stated.** `linked_to` being set is what
   says so, and the card shows "before Lab 5" in a different colour for exactly
   that reason. Never let a linked date render as though a document published it.

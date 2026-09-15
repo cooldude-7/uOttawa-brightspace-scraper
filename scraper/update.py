@@ -21,6 +21,7 @@ import exact
 import find_dates
 import link_tasks
 import paths
+import posted_work
 import store
 import vault
 
@@ -131,6 +132,20 @@ def scrape(argv):
             # Never let this sink a scrape. Deadlines are the product; timing
             # a to-do is a convenience on top of them.
             print(f"  could not link tasks: {e}")
+
+        # After link_tasks, not before: these are stored already marked as
+        # unanchorable, so link_tasks never pays to consider them.
+        try:
+            db = store.connect()
+            added, names = posted_work.load(db)
+            db.commit()
+            db.close()
+            if added:
+                print(f"\n-- work with no deadline " + "-" * 35)
+                for code, title in names:
+                    print(f"  {code:<9} {title[:52]}")
+        except Exception as e:
+            print(f"  could not check for undated work: {e}")
 
     # The vault is built from what the scrape just stored, so it belongs at
     # the end of the scrape rather than as a thing to remember. Deterministic
