@@ -281,23 +281,34 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   professor does update dates, and one stale item is stale rather than
   mistyped. MCG2130's eight assignments were the opposite: every weekday held.
   Check the weekday before ever reaching for `--year-typo`.
-- **Correcting a mistyped year moves the weekday, and coursework does not
-  move.** `fix_year()` replaces the year and keeps the month and day, so
-  2025-09-19 becomes 2026-09-19. A year is 52 weeks *plus a day*, so that
-  lands one weekday later: Friday becomes Saturday. MCG2130's Assignment #1
-  is the case -- the document itself says "Fall 2026 ... Due: Sept 18th
-  (Friday) at 11:00 PM", and the correction put it on Saturday the 19th. One
-  day late on an 11 PM deadline is a missed hand-in. Which reading is right
-  depends on where the wrong year came from: a date typed fresh for this year
-  means the same calendar date, a date inherited from last year's shell means
-  the same weekday (364 days on, not 365). Do not guess -- `probe_year.py`
-  prints both readings with the weekday on each, for every date a typo rule
-  touched, and the student says which matches what they were told.
+- **Correcting a mistyped year moves the weekday, and that is not by itself
+  a bug.** `fix_year()` replaces the year and keeps the month and day, so
+  2025-09-18 becomes 2026-09-18. A year is 52 weeks *plus a day*, so the
+  weekday shifts: Thursday becomes Friday. That looked wrong and was
+  checked against the document, which settled it -- MCG2130's Assignment #1
+  PDF says "Fall 2026 ... Due: Sept 18th (Friday) at 11:00 PM", exactly the
+  corrected date. This professor typed the dates fresh for this year and got
+  only the year wrong, so the **day of the month** is what he meant and the
+  plain year swap is right. Do not "fix" it to preserve the weekday.
+  `probe_year.py` prints both readings with weekdays for every date a typo
+  rule touched; `probe_year.py MCG2130 --raw` dumps the raw Brightspace
+  fields behind them.
+- **An assignment folder publishes two dates, and both get stored.**
+  MCG2130's eight assignments are sixteen rows, each a Thursday/Friday pair
+  one day apart at the same time -- `DueDate` and a second field, almost
+  certainly the late-submission cutoff. `exact.py` reads `DueDate` for an
+  assignment, so the twin comes from another source in the same course
+  (`modules`, `topics` or `calendar`) carrying the same title. They survive
+  deduplication because a different date means a different `event_key`. The
+  danger is specific: the later row is a real date Brightspace holds, so it
+  cannot simply be dropped, but showing it beside the real deadline invites
+  handing in a day late.
 - **That assignment was never readable.** MCG2130's "Assignment #1" and "#2"
   answer HTTP 404 on download, so `find_dates.py` has never seen a word of
-  them and the stored date came from Brightspace's field alone. The student
-  found this by opening the PDF themselves. A document the scraper cannot
-  fetch is a deadline with no second opinion -- the 404s are worth chasing.
+  them and the stored date came from Brightspace's fields alone. The student
+  found the duplicate by opening the PDF themselves. A document the scraper
+  cannot fetch is a deadline with no second opinion -- the 404s are worth
+  chasing.
 - **An active quiz carrying only last term's date is stored with no date.**
   Dropping it hides real work; shifting the year invents a deadline. Neither
   is acceptable, so `exact.py` stores it `pending` -- named but not scheduled

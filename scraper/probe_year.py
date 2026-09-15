@@ -24,6 +24,7 @@ nothing.
 """
 
 import datetime
+import re
 import sys
 
 import store
@@ -54,8 +55,59 @@ def same_weekday(iso, right_year):
     return None
 
 
+DATE_FIELD = re.compile(r"date|due|end|start", re.I)
+
+
+def raw_dump(code):
+    """Print every date field Brightspace returns for one course.
+
+    The `dates` table records what was stored, not which field it came from,
+    so when a title turns up twice this is the only way to tell whether
+    Brightspace really published two dates or something here duplicated one.
+    """
+    import json
+
+    import paths
+
+    collected = json.loads(paths.COLLECTED.read_text(encoding="utf-8"))
+    courses = collected if isinstance(collected, list) else collected.get("courses", [])
+    for course in courses:
+        if store.course_parts(course.get("name", ""))["code"].upper() != code:
+            continue
+        print(f"\n{course.get('name', '')}\n")
+        for source in ("assignments", "quizzes", "modules", "topics",
+                       "calendar", "checklists"):
+            items = course.get(source) or []
+            if not items:
+                continue
+            print(f"  [{source}]  {len(items)} item(s)")
+            for item in items:
+                if source == "checklists":
+                    item_list = item.get("items") or []
+                else:
+                    item_list = [item]
+                for one in item_list:
+                    if not isinstance(one, dict):
+                        continue
+                    title = (one.get("Name") or one.get("name")
+                             or one.get("Title") or one.get("title") or "?")
+                    dates = {k: v for k, v in one.items()
+                             if DATE_FIELD.search(k) and v
+                             and not isinstance(v, (list, dict))}
+                    if not dates:
+                        continue
+                    print(f"    {str(title)[:38]}")
+                    for k, v in sorted(dates.items()):
+                        print(f"        {k:<26} {v}")
+        return
+    print(f"No course matching {code} in collected.json.")
+
+
 def main(argv):
     only = argv[1].upper() if len(argv) > 1 else None
+    if only and "--raw" in argv:
+        raw_dump(only)
+        return 0
     typos = store.load_prefs().get("year_typos") or {}
     if not typos:
         print("No year typos declared in me.json -- nothing to check.")
