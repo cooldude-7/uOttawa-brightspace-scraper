@@ -138,6 +138,8 @@ python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
 python posted_work.py      documents that ARE work; --store to keep them
 python probe_year.py       check a year-typo correction lands on the right weekday
+python supersede.py        stored dates Brightspace has replaced; --apply retires them
+python store.py --year-typo MCG2130 off          retire a correction once the prof fixes it
 python test_rules.py       the rules that must never break (no deps, ~0.1s)
 python backup.py           dump the database into the vault
 python backup.py --restore rebuild a database from that dump
@@ -294,6 +296,15 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   the direction that loses marks. A correction rule needs retiring once the
   source is fixed, and the rows it wrote need removing with it; `fix_year()`
   going quiet is not the same as its output going away.
+  `supersede.py` is that cleanup, and its safety is one condition: a row is
+  retired only when another row for the same title **already holds** a date
+  Brightspace publishes today. So no arrangement of the data loses a
+  deadline -- the worst case is that it does nothing. An item Brightspace
+  has stopped publishing is left alone, because silence is not a correction;
+  a linked to-do is skipped, because it carries its anchor's date and so
+  always looks like a twin; and rows are marked `resolved` like a merge, so
+  `--restore` brings them back. Retire the rule itself with
+  `store.py --year-typo CODE off`.
 - **Don't build a column that looks like data and isn't.** The first version
   of `probe_year.py` printed a "was" column by swapping the corrected year
   back -- a reconstruction, not anything read from the database. It implied
