@@ -698,5 +698,69 @@ class SupersededDatesAreRetiredSafely(unittest.TestCase):
 
 
 
+class HandAddedDeadlines(unittest.TestCase):
+    """Not every deadline is on Brightspace. A TA emails one; add.py takes it."""
+
+    def _add(self, args):
+        import add
+        return add.main(["add.py"] + args)
+
+    def _course(self, tmp):
+        import store as s
+        db = s.connect()
+        now = s.now()
+        db.execute("INSERT INTO courses (d2l_id, code, name, term, first_seen,"
+                   " last_seen) VALUES (9,'MCG2360','MCG2360  A02  Engineering"
+                   " Materials I [ LEC ] 20269','20269',?,?)", (now, now))
+        db.commit()
+        db.close()
+
+    def _sandbox(self):
+        """A real database in a temporary BRIGHTSPACE_DATA, as add.py expects."""
+        import importlib
+        import os
+        tmp = tempfile.mkdtemp()
+        Path(tmp, ".brightspace-data").write_text("x", encoding="utf-8")
+        os.environ["BRIGHTSPACE_DATA"] = tmp
+        import paths
+        import store as s
+        importlib.reload(paths)
+        s.DB_PATH = paths.DB
+        s._prepared = False
+        self._course(tmp)
+        return s
+
+    def test_a_hand_typed_row_never_duplicates_a_scraped_one(self):
+        """Two cards for one deadline and the app cannot say which is real."""
+        s = self._sandbox()
+        self.assertEqual(self._add(["MCG2360", "Lab group registration",
+                                    "2026-09-18", "23:59"]), 0)
+        self.assertEqual(self._add(["MCG2360", "Lab group registration",
+                                    "2026-09-18", "23:59"]), 1,
+                         "the second add must be refused")
+        db = s.connect()
+        n = db.execute("SELECT COUNT(*) FROM dates").fetchone()[0]
+        db.close()
+        self.assertEqual(n, 1)
+
+    def test_the_time_is_stored_twenty_four_hour(self):
+        """Typed as 7:00 PM, stored as 19:00 -- or the calendar never gets it."""
+        s = self._sandbox()
+        self._add(["MCG2360", "Lab prep session", "2026-09-17", "7:00 PM",
+                   "--kind", "session"])
+        db = s.connect()
+        row = db.execute("SELECT due_time FROM dates").fetchone()
+        db.close()
+        self.assertEqual(row["due_time"], "19:00")
+
+    def test_a_date_it_cannot_read_is_refused_not_guessed(self):
+        s = self._sandbox()
+        self.assertEqual(self._add(["MCG2360", "Thing", "next friday"]), 2)
+        db = s.connect()
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM dates").fetchone()[0], 0)
+        db.close()
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

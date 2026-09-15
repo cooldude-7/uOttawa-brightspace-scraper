@@ -129,6 +129,7 @@ Everything runs from `scraper/`.
 
 ```
 python update.py           check Brightspace for anything new (the main one)
+python add.py MCG2360 "Lab group registration" 2026-09-18 23:59   a deadline by hand
 python web.py              the web app; prints a phone-reachable address
 python cards.py            same list in the terminal; --review walks it
 python gcal.py --check     reconcile calendar against stored decisions
@@ -396,6 +397,16 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   "%H:%M")` directly, so a model returning "7:00 PM" instead of the 19:00 the
   prompt asks for would have raised and quietly cost an accepted deadline its
   calendar entry.
+- **Brightspace is not the only place a deadline lives.** MCG2360's lab
+  group registration cutoff arrived as a TA's email -- nowhere in the API,
+  in no document, and so invisible to everything here. A professor saying a
+  date in a lecture is the same. `add.py` is the way in, and a hand-typed
+  row is marked `confidence: stated` with an excerpt saying so, because
+  nothing downstream should mistake it for a date a document published. It
+  refuses to add a second row whose loosened title matches one already
+  there: two cards for one deadline and the app cannot say which is real.
+  Added by hand means **kept** by default -- typing it out is the decision
+  the cards exist to collect -- with `--new` to decide later.
 - **Some documents ARE the work, rather than mentioning it.** A DGD
   question sheet states no date, so `find_dates.py` correctly finds nothing
   in it and it never reached the list -- the student asked why their linear
