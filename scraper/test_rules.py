@@ -436,6 +436,34 @@ class ContentItemDueDates(unittest.TestCase):
         self.assertEqual(row["due_time"], "19:00", "23:00 UTC is 7pm in Ottawa in October")
 
 
+import contextlib
+
+
+@contextlib.contextmanager
+def lab_files(named):
+    """A real extracted-files tree, because that is where posted_work reads."""
+    import json as _json
+    import paths
+    from download import safe_name
+    course = {"id": 3, "name": "MAT1341  B00  Intro. To Linear Algebra [ LEC ] 20269",
+              "term": "20269"}
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        old_ex, old_col = paths.EXTRACTED, paths.COLLECTED
+        paths.EXTRACTED = root / "extracted"
+        paths.COLLECTED = root / "collected.json"
+        paths.COLLECTED.write_text(_json.dumps([course]), encoding="utf-8")
+        folder = paths.EXTRACTED / safe_name(course["name"], 40)
+        folder.mkdir(parents=True)
+        for stem, text in named.items():
+            (folder / f"{stem}.txt").write_text(text, encoding="utf-8")
+        db = fresh_db()
+        try:
+            yield db
+        finally:
+            paths.EXTRACTED, paths.COLLECTED = old_ex, old_col
+
+
 class PostedWorkWithNoDeadline(unittest.TestCase):
     """A DGD question sheet says nothing about when to do it, so the date
     extractor correctly finds nothing and it never reached the list."""
@@ -452,43 +480,48 @@ class PostedWorkWithNoDeadline(unittest.TestCase):
                       "Lecture_3", "(Fall 2025) MCG 2130 Final exam"):
             self.assertFalse(pw.looks_like_work(title), title)
 
+    def test_it_finds_files_the_documents_table_never_heard_of(self):
+        """The bug this replaced: it read the documents table, where a row
+        only appears once find_dates judged the text worth an API call --
+        and that test is "has dates or task language", which a question
+        sheet has neither of. The documents it exists to find are exactly
+        the ones missing from there. It reads the extracted files instead."""
+        import posted_work as pw
+        with lab_files({"Linear_Algebra___DGD_1 questions": "1. Find the span of...",
+                        "Linear_Algebra___Lecture_2": "Vectors and dot products"}) as db:
+            found = pw.find(db)
+            self.assertEqual([t for _, _, t, _ in found],
+                             ["Linear_Algebra___DGD_1 questions"])
+            # and nothing was in the documents table at all
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM documents").fetchone()[0], 0)
+
     def test_it_is_stored_undated_and_kept_out_of_link_tasks(self):
         import posted_work as pw
-        db = fresh_db()
-        cid = add_course(db, 3, "MAT1341  B00  Intro. To Linear Algebra [ LEC ] 20269")
-        now = store.now()
-        for title in ("Linear_Algebra___DGD_1 questions", "Linear_Algebra___Lecture_2"):
-            db.execute("""INSERT INTO documents (course_id, kind, title, text_hash,
-                          word_count, first_seen, last_seen)
-                          VALUES (?, 'file', ?, 'x', 100, ?, ?)""", (cid, title, now, now))
+        with lab_files({"Linear_Algebra___DGD_1 questions": "1. Find the span...",
+                        "Linear_Algebra___Lecture_2": "Vectors and dot products"}) as db:
+            added, names = pw.load(db)
+            self.assertEqual(added, 1, "the lecture is not work to do")
+            row = db.execute("SELECT * FROM dates").fetchone()
+            self.assertEqual(row["title"], "Linear Algebra DGD 1 questions")
+            self.assertIsNone(row["due_date"], "no date is invented")
+            self.assertEqual(row["kind"], "todo")
+            self.assertEqual(row["pending"], 0,
+                             "no deadline exists -- not waiting on the professor")
+            self.assertEqual(row["linked_to"], "",
+                             "marked unanchorable so link_tasks never pays for it")
 
-        added, names = pw.load(db)
-        self.assertEqual(added, 1, "the lecture is not work to do")
-        row = db.execute("SELECT * FROM dates").fetchone()
-        self.assertEqual(row["title"], "Linear Algebra DGD 1 questions")
-        self.assertIsNone(row["due_date"], "no date is invented")
-        self.assertEqual(row["kind"], "todo")
-        self.assertEqual(row["pending"], 0,
-                         "no deadline exists -- it is not waiting on the professor")
-        self.assertEqual(row["linked_to"], "",
-                         "marked unanchorable so link_tasks never pays for it")
-
-        # A second scrape must not add it again.
-        self.assertEqual(pw.load(db)[0], 0)
-        self.assertEqual(db.execute("SELECT COUNT(*) FROM dates").fetchone()[0], 1)
+            # A second scrape must not add it again.
+            self.assertEqual(pw.load(db)[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM dates").fetchone()[0], 1)
 
     def test_dismissing_one_keeps_it_dismissed(self):
         import posted_work as pw
-        db = fresh_db()
-        cid = add_course(db, 4, "MAT1341  B00  Intro. To Linear Algebra [ LEC ] 20269")
-        now = store.now()
-        db.execute("""INSERT INTO documents (course_id, kind, title, text_hash,
-                      word_count, first_seen, last_seen)
-                      VALUES (?, 'file', 'Tutorial 3 problem set', 'x', 10, ?, ?)""",
-                   (cid, now, now))
-        pw.load(db)
-        db.execute("UPDATE dates SET status = 'dismissed'")
-        self.assertEqual(pw.load(db)[0], 0, "a false positive dismissed once stays gone")
+        with lab_files({"Tutorial 3 problem set": "questions here"}) as db:
+            pw.load(db)
+            db.execute("UPDATE dates SET status = 'dismissed'")
+            self.assertEqual(pw.load(db)[0], 0,
+                             "a false positive dismissed once stays gone")
 
 
 class BackupRoundTrip(unittest.TestCase):

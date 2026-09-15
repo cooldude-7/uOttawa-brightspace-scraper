@@ -17,10 +17,13 @@ Nothing here invents a date. These are stored with no date at all, which
 is the truth about them.
 """
 
+import json
 import re
 import sys
 
+import paths
 import store
+from download import safe_name
 
 # Titles that name work to be done. Word boundaries throughout -- "questions"
 # must not fire on "questionnaire".
@@ -45,14 +48,36 @@ def looks_like_work(title):
 
 
 def find(db):
-    """-> [(course_id, course_name, document_title)] worth listing."""
-    rows = db.execute(
-        """SELECT d.id, d.course_id, d.title, c.name AS course_name
-           FROM documents d JOIN courses c ON c.id = d.course_id
-           WHERE d.kind = 'file'
-           ORDER BY c.name, d.title""").fetchall()
-    return [(r["course_id"], r["course_name"], r["title"], r["id"])
-            for r in rows if looks_like_work(r["title"])]
+    """-> [(course_id, course_name, title, document_id|None)] worth listing.
+
+    Read off the extracted files on disk, NOT the documents table. A row
+    only reaches that table when find_dates judged the text worth an API
+    call, and its test is "does this contain dates or task language" -- so
+    a sheet of practice questions, which has neither, never gets one. The
+    exact documents this exists to find are the ones deliberately excluded
+    from there. Looking in the table found nothing out of 43 files, which
+    is how this was noticed.
+    """
+    try:
+        courses = json.loads(paths.COLLECTED.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        courses = []
+    by_folder = {safe_name(c["name"], 40): c for c in courses}
+
+    out = []
+    root = paths.EXTRACTED
+    for folder in sorted(root.iterdir()) if root.exists() else []:
+        if not folder.is_dir():
+            continue
+        course = by_folder.get(folder.name)
+        if not course:
+            continue
+        course_id = store.upsert_course(
+            db, course["id"], course["name"], course.get("term"))
+        for f in sorted(folder.glob("*.txt")):
+            if looks_like_work(f.stem):
+                out.append((course_id, course["name"], f.stem, None))
+    return out
 
 
 def load(db):
@@ -94,9 +119,11 @@ def main(argv):
             print(f"    {store.course_parts(course_name)['code']:<9} {tidy(title)[:58]}")
 
         if "--store" not in argv:
-            total = db.execute(
-                "SELECT COUNT(*) FROM documents WHERE kind = 'file'").fetchone()[0]
-            print(f"\n  out of {total} files. Nothing stored -- add --store.\n")
+            total = sum(1 for folder in (paths.EXTRACTED.iterdir()
+                                         if paths.EXTRACTED.exists() else [])
+                        if folder.is_dir() for _ in folder.glob("*.txt"))
+            print(f"\n  out of {total} extracted files. "
+                  f"Nothing stored -- add --store.\n")
             return
 
         added, names = load(db)
