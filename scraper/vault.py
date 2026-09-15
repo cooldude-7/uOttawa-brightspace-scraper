@@ -386,7 +386,13 @@ def build(dry=False):
             "# The Pi writes these with LF. Without this, git on Windows\n"
             "# rewrites them to CRLF on checkout and every note shows as\n"
             "# modified before it has been opened, which blocks the next pull.\n"
-            "* text eol=lf\n", encoding="utf-8")
+            "#\n"
+            "# text=auto rather than a bare text: a bare `text` forces every\n"
+            "# file to be treated as text, including binaries, and git then\n"
+            "# rewrites CRLF byte pairs *inside* them. Measured on a 19.2 MB\n"
+            "# PDF: 11,834 bytes lost and a different checksum, silently, on\n"
+            "# checkout. Any image pasted into a note would go the same way.\n"
+            "* text=auto eol=lf\n", encoding="utf-8")
 
     skills_mod.seed(root / "Skills", dry, report)
     db.close()
