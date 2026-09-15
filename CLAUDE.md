@@ -373,6 +373,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   argue with. Measured on the real corpus: 3 of 26 titles, all genuine.
   Stored with `linked_to = ''` so `link_tasks.py` never pays to consider
   them -- by definition they have no anchor.
+- **The `documents` table is not the list of documents.** A row only appears
+  there once `find_dates` judged the text worth an API call, and that test
+  (`worth_reading`) is "does it contain dates or task language". A document
+  with neither -- a question sheet, a problem set -- is downloaded, extracted
+  to disk, and never recorded. `posted_work.py` originally searched that
+  table and found **0 of 43 files**, because the documents it exists to find
+  are exactly the ones the table excludes. Anything wanting *every* file must
+  read `paths.EXTRACTED` off disk instead.
 - **A linked date is inferred, not stated.** `linked_to` being set is what
   says so, and the card shows "before Lab 5" in a different colour for exactly
   that reason. Never let a linked date render as though a document published it.
