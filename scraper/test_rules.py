@@ -948,5 +948,55 @@ class WorkSheetsAreRecognisedByTitle(unittest.TestCase):
 
 
 
+class PostedWorkLandsInTheTodoTab(unittest.TestCase):
+    """Stored as `new`, it sat in the deadline cards instead of the To-do tab.
+
+    /api/todo shows status = 'accepted' only. posted_work stored 'new', so
+    the tutorial questions were in the database and in the 67-item triage
+    queue -- not where the student was looking, and not crossable off.
+    Running --store is the decision; the command without it only prints.
+    """
+
+    def test_stored_work_is_accepted_so_it_reaches_the_todo_tab(self):
+        db = fresh_db()
+        cid = add_course(db)
+        store.save_dates(db, cid, None, status="accepted", dates=[{
+            "title": "Tutorial 1 questions", "date": None, "time": None,
+            "kind": "todo", "confidence": "high", "source_excerpt": "x"}])
+        db.commit()
+        row = db.execute("SELECT status, decided_at, due_date FROM dates").fetchone()
+        self.assertEqual(row["status"], "accepted")
+        self.assertIsNotNone(row["decided_at"], "a decision needs its timestamp")
+        self.assertIsNone(row["due_date"], "no date was stated, so none is stored")
+
+    def test_the_extractor_still_queues_for_review(self):
+        """find_dates must keep defaulting to new -- it is guessing, not told."""
+        db = fresh_db()
+        cid = add_course(db)
+        store.save_dates(db, cid, None, [{
+            "title": "Some deadline it found", "date": "2026-10-01", "time": None,
+            "kind": "assignment", "confidence": "high", "source_excerpt": "x"}])
+        db.commit()
+        row = db.execute("SELECT status FROM dates").fetchone()
+        self.assertEqual(row["status"], "new")
+
+    def test_an_undated_todo_is_not_filtered_out_of_the_todo_list(self):
+        """It has no date by design, and must still be listed and crossable."""
+        db = fresh_db()
+        cid = add_course(db)
+        store.save_dates(db, cid, None, status="accepted", dates=[{
+            "title": "Tutorial 2 questions", "date": None, "time": None,
+            "kind": "todo", "confidence": "high", "source_excerpt": "x"}])
+        db.commit()
+        rows = db.execute("SELECT * FROM dates WHERE status = 'accepted'").fetchall()
+        self.assertEqual(len(rows), 1)
+        store.mark_done(db, rows[0]["id"], True)
+        db.commit()
+        self.assertIsNotNone(
+            db.execute("SELECT done_at FROM dates").fetchone()["done_at"],
+            "it stays until crossed off, and crossing off must stick")
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

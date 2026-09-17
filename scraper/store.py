@@ -673,7 +673,7 @@ def forget_read(db, dry=True):
     return rows
 
 
-def save_dates(db, course_id, document_id, dates):
+def save_dates(db, course_id, document_id, dates, status="new"):
     """Store found deadlines. Returns how many were genuinely new.
 
     A deadline already on file keeps whatever you decided about it -- this
@@ -733,11 +733,13 @@ def save_dates(db, course_id, document_id, dates):
         db.execute(
             """INSERT INTO dates
                (course_id, document_id, title, due_date, due_time, kind, confidence,
-                source_excerpt, pending, dedup_key, resolved_title, status, first_seen)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?)""",
+                source_excerpt, pending, dedup_key, resolved_title, status,
+                first_seen, decided_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (course_id, document_id, d.get("title"), due, d.get("time") or None,
              d.get("kind"), d.get("confidence"), d.get("source_excerpt"),
-             1 if d.get("pending") else 0, key, core, now()),
+             1 if d.get("pending") else 0, key, core, status, now(),
+             now() if status != "new" else None),
         )
         added += 1
     return added

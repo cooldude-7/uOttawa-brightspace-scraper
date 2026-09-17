@@ -531,6 +531,16 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   the DGD sheets were found in the first place.
   Stored with `linked_to = ''` so `link_tasks.py` never pays to consider
   them -- by definition they have no anchor.
+
+  **Stored `accepted`, not `new`.** `/api/todo` lists accepted rows only, so
+  storing them `new` put them in the swipe-through deadline cards instead --
+  in the triage queue, not the To-do tab, and not crossable off. They were
+  in the database the whole time and the student could not find them.
+  Running `--store` *is* the decision: the command without it prints the
+  list and changes nothing, so the review has already happened by the time
+  it is typed. Same reasoning as `add.py`. `save_dates()` takes `status`
+  for this and still defaults to `new`, because `find_dates` is guessing
+  and must keep queueing for review.
 - **The `documents` table is not the list of documents.** A row only appears
   there once `find_dates` judged the text worth an API call, and that test
   (`worth_reading`) is "does it contain dates or task language". A document

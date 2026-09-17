@@ -98,7 +98,13 @@ def load(db):
     """Store each as an undated to-do. Returns (added, [names])."""
     added, names = 0, []
     for course_id, course_name, title, doc_id in find(db):
-        n = store.save_dates(db, course_id, doc_id, [{
+        # Kept, not queued. Running --store is itself the decision: the
+        # command without it prints the list and changes nothing, so by the
+        # time you type --store you have already reviewed them. Storing as
+        # `new` put them in the swipe-through deadline cards instead of the
+        # To-do tab -- which shows accepted rows only -- so they landed in
+        # the triage queue and never appeared where the student looked.
+        n = store.save_dates(db, course_id, doc_id, status="accepted", dates=[{
             "title": tidy(title),
             "date": None,
             "time": None,
