@@ -520,6 +520,15 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   (~$3), and here the cost of being wrong is one row dismissed rather than
   a missed submission -- plus a title rule is one the student can read and
   argue with. Measured on the real corpus: 3 of 26 titles, all genuine.
+
+  **An underscore is a word character**, so `\btutorial\b` never matched
+  `Tutorial_1` -- to a regex the whole thing is one word and the boundary
+  never falls where it needs to. Professors name files that way almost
+  exclusively (`Tutorial_1`, `Problem_Set_3`, `Linear_Algebra___DGD_1`), so
+  the rule matched almost nothing and said so in no way at all. `words()`
+  turns `_`, `-` and `.` into spaces before matching. Found by the student
+  asking why their tutorial questions were not in the list -- the same way
+  the DGD sheets were found in the first place.
   Stored with `linked_to = ''` so `link_tasks.py` never pays to consider
   them -- by definition they have no anchor.
 - **The `documents` table is not the list of documents.** A row only appears
