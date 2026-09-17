@@ -646,6 +646,33 @@ def mark_read(db, document_id):
     db.execute("UPDATE documents SET last_read_at = ? WHERE id = ?", (now(), document_id))
 
 
+def forget_read(db, dry=True):
+    """Un-mark documents that were marked read but produced nothing.
+
+    `find_dates` used to call `mark_read()` whether or not the model
+    actually answered, so a run that died on a billing error marked every
+    remaining document as read. Those documents are then skipped forever,
+    silently -- a deadline nobody will ever look for again.
+
+    The damage cannot be identified exactly after the fact: a document that
+    genuinely contains no dates looks the same as one we never got to ask
+    about. So this clears the read mark on every document with no stored
+    dates, which re-reads a handful of genuinely empty ones too. That costs
+    a few cents; the other direction costs a deadline. Every one is printed.
+    """
+    rows = db.execute(
+        """SELECT d.id, d.title FROM documents d
+            WHERE d.last_read_at IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM dates WHERE document_id = d.id)
+            ORDER BY d.title""").fetchall()
+    if not dry:
+        for r in rows:
+            db.execute("UPDATE documents SET last_read_at = NULL WHERE id = ?",
+                       (r["id"],))
+        db.commit()
+    return rows
+
+
 def save_dates(db, course_id, document_id, dates):
     """Store found deadlines. Returns how many were genuinely new.
 
@@ -952,6 +979,22 @@ if __name__ == "__main__":
     db = connect()
     if "--restore" in sys.argv:
         print(f"Restored {restore(db)} rows merged by an earlier rule.")
+    if "--forget-read" in sys.argv:
+        rows = forget_read(db, dry="--apply" not in sys.argv)
+        if not rows:
+            print("  Nothing to un-mark -- every document read has dates on file.")
+            sys.exit(0)
+        print(f"\n  {len(rows)} document(s) marked read with no dates stored:\n")
+        for r in rows:
+            print(f"      {str(r['title'])[:60]}")
+        if "--apply" in sys.argv:
+            print(f"\n  Un-marked. `python update.py` will read them again.")
+        else:
+            print("\n  Nothing changed. Some of these genuinely contain no dates"
+                  "\n  and re-reading them costs a few cents. To go ahead:"
+                  "\n\n      python store.py --forget-read --apply\n")
+        sys.exit(0)
+
     if "--tidy" in sys.argv:
         print(f"Collapsed {tidy(db)} duplicate entries.\n")
     print(f"Database ready at {DB_PATH}")

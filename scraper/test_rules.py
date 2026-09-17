@@ -12,6 +12,7 @@ the user's writing, and would do it without an error message.
 No dependencies beyond the standard library, so it runs on the Pi.
 """
 
+import importlib.util
 import sqlite3
 import tempfile
 import unittest
@@ -854,6 +855,65 @@ class AttachmentsOnEveryTab(unittest.TestCase):
         second = dl.download_attachments(Counting(), course, "GNG2101")
         self.assertEqual(second[0], 0, "must not download it a second time")
         self.assertEqual(asked, [], "must not even ask")
+
+
+
+class AFailedReadIsNotAReadDocument(unittest.TestCase):
+    """The credit ran out mid-scrape and 29 documents were marked read.
+
+    `ask()` returned [] on an API failure, identical to "the model read this
+    and found nothing", and mark_read() ran either way. Those documents are
+    skipped on every future run -- silently, forever. Instructions_Project_H
+    through J went that way, along with a GNG1106 announcement saying
+    Assignment 1 was posted.
+    """
+
+    @unittest.skipUnless(importlib.util.find_spec("anthropic"),
+                         "needs the anthropic SDK; runs on the Pi, where it "
+                         "is installed and where this guard matters")
+    def test_ask_reports_failure_as_none_not_empty(self):
+        """[] means read-and-empty. None means never asked. Not the same."""
+        import find_dates
+
+        class Boom:
+            class messages:
+                @staticmethod
+                def create(**kw):
+                    raise RuntimeError("credit balance is too low")
+
+        dates, tin, tout = find_dates.ask(
+            Boom(), "claude-sonnet-5", "GNG2101", "Instructions_Project_H",
+            "Some text with a date in it.", (None, None))
+        self.assertIsNone(dates, "a failed call must not look like an empty one")
+        self.assertEqual((tin, tout), (0, 0))
+
+    def test_forget_read_clears_only_documents_with_no_dates(self):
+        db = fresh_db()
+        cid = add_course(db)
+        now = store.now()
+        for title, has_date in (("Read and found a date", True),
+                                ("Marked read, nothing stored", False)):
+            db.execute(
+                "INSERT INTO documents (course_id, kind, title, text_hash,"
+                " word_count, first_seen, last_seen, last_read_at)"
+                " VALUES (?,'file',?,?,10,?,?,?)",
+                (cid, title, title, now, now, now))
+            doc = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            if has_date:
+                add_date(db, cid, f"Deadline from {title}", "2026-10-01",
+                         key=f"k-{title}")
+                db.execute("UPDATE dates SET document_id = ? WHERE dedup_key = ?",
+                           (doc, f"k-{title}"))
+        db.commit()
+
+        rows = store.forget_read(db, dry=False)
+        self.assertEqual([r["title"] for r in rows],
+                         ["Marked read, nothing stored"])
+        still = db.execute(
+            "SELECT title FROM documents WHERE last_read_at IS NOT NULL"
+        ).fetchall()
+        self.assertEqual([r["title"] for r in still], ["Read and found a date"],
+                         "a document that produced a date stays read")
 
 
 

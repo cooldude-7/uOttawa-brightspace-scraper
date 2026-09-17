@@ -148,6 +148,7 @@ python probe_year.py       check a year-typo correction lands on the right weekd
 python probe_attachments.py GNG2101   files hanging off tabs we never download
 python supersede.py        stored dates Brightspace has replaced; --apply retires them
 python store.py --year-typo MCG2130 off          retire a correction once the prof fixes it
+python store.py --forget-read   un-mark documents a failed run marked as read
 python test_rules.py       the rules that must never break (no deps, ~0.1s)
 python backup.py           dump the database into the vault
 python backup.py --restore rebuild a database from that dump
@@ -439,6 +440,27 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   Typed `CustomInstructions` are written straight to the extracted folder as
   `<title> (instructions).txt`, HTML stripped -- no request, and on
   Deliverable A that is 553 characters of what it actually asks for.
+- **A failed API call is not an empty document, and marking it read loses
+  it forever.** `ask()` returned `[]` when the model call raised, which is
+  exactly what it returns when the model read the document and found no
+  dates. `find_dates` then called `mark_read()` either way, so
+  `see_document()` skips that document on every future run. It happened for
+  real: the credit balance ran out mid-scrape on 2026-09-17 and **29
+  documents were marked read without being read** -- Instructions_Project_H
+  through J, the PD templates, the soldering lab, and a GNG1106 announcement
+  saying Assignment 1 was posted. Nothing in the output distinguished them
+  from documents that genuinely had no dates.
+
+  `ask()` now returns `None` on failure, `[]` only on a real empty answer,
+  and `mark_read()` runs only when the model answered; the run prints how
+  many were left unread. The damage cannot be identified exactly after the
+  fact, so `store.py --forget-read` clears the mark on every document with
+  no stored dates and prints each by name -- re-reading a few genuinely
+  empty ones costs cents, and the other direction costs a deadline.
+
+  The rest of the pipeline behaved correctly under the same failure: each
+  document's error was caught individually, so the vault still built, the
+  database still backed up and the push still happened.
 - **Brightspace is not the only place a deadline lives.** MCG2360's lab
   group registration cutoff arrived as a TA's email -- nowhere in the API,
   in no document, and so invisible to everything here. A professor saying a

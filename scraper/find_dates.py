@@ -221,7 +221,12 @@ def ask(client, model, course, doc, text, window=(None, None)):
         )
     except Exception as e:
         print(f"    ! {model} failed: {e}")
-        return [], 0, 0
+        # None, not [] -- the caller must be able to tell "the model read this
+        # and found nothing" from "we never got to ask". They look identical
+        # in the output and they are opposites: one is done, the other is a
+        # document nobody has read. Marking the second as read loses it for
+        # good, silently, which is the failure this project exists to prevent.
+        return None, 0, 0
 
     body = next((b.text for b in r.content if b.type == "text"), "{}")
     try:
@@ -493,6 +498,7 @@ def main(argv=None):
 
     db = store.connect()
     run_id = store.start_run(db, "compare" if compare else keys[0])
+    unread = 0
     client = anthropic.Anthropic(api_key=key)
 
     totals = {k: [0, 0, 0] for k in keys}      # dates, input tokens, output tokens
@@ -516,9 +522,13 @@ def main(argv=None):
 
         read += 1
         print(f"{course['name'][:40]}\n  [{entry['kind']}] {entry['title'][:56]}")
+        asked_ok = True
         for key in keys:
             dates, tin, tout = ask(client, MODELS[key], course["name"],
                                    entry["title"], entry["text"], window)
+            if dates is None:
+                asked_ok = False
+                dates = []
             totals[key][0] += len(dates)
             totals[key][1] += tin
             totals[key][2] += tout
@@ -530,8 +540,18 @@ def main(argv=None):
             # run would otherwise store both and double every card.
             if key == keys[0]:
                 new_cards += store.save_dates(db, course_id, doc_id, dates)
-        store.mark_read(db, doc_id)
+        # Only when the model actually answered. A run that died on a billing
+        # error would otherwise mark every remaining document read and they
+        # would never be looked at again.
+        if asked_ok:
+            store.mark_read(db, doc_id)
+        else:
+            unread += 1
         print()
+
+    if unread:
+        print(f"  {unread} document(s) could not be read, and are NOT marked\n"
+              f"  as read -- they will be tried again on the next run.\n")
 
     OUT.write_text(json.dumps(results, indent=2), encoding="utf-8")
     spent = sum(cost(k, totals[k][1], totals[k][2]) for k in keys)
