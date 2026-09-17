@@ -139,6 +139,7 @@ python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
 python posted_work.py      documents that ARE work; --store to keep them
 python probe_year.py       check a year-typo correction lands on the right weekday
+python probe_attachments.py GNG2101   files hanging off tabs we never download
 python supersede.py        stored dates Brightspace has replaced; --apply retires them
 python store.py --year-typo MCG2130 off          retire a correction once the prof fixes it
 python test_rules.py       the rules that must never break (no deps, ~0.1s)
@@ -397,6 +398,18 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   "%H:%M")` directly, so a model returning "7:00 PM" instead of the 19:00 the
   prompt asks for would have raised and quietly cost an accepted deadline its
   calendar entry.
+- **`collect.py` gathers twelve tabs; `download.py` downloads from one.**
+  Content (`topics`) is the only place a file is ever fetched from, so an
+  attachment on a submission folder, an announcement, a discussion post or
+  the course overview is collected into `collected.json` and then never
+  read -- no error, no skip line, nothing. GNG2101's Project Deliverable A
+  is the case that found it: due Fri 18 Sep 11:59 PM, with not one word of
+  what it asks for, because the brief is attached to the dropbox folder.
+  `find_dates.py` does read an assignment's `CustomInstructions`, so typed
+  instructions reach the extractor -- but they never become a note, so
+  nothing downstream can show them either. `probe_attachments.py` lists
+  every such file from `collected.json` at no cost, and `--live` confirms
+  the download endpoint before anything is built on it.
 - **Brightspace is not the only place a deadline lives.** MCG2360's lab
   group registration cutoff arrived as a TA's email -- nowhere in the API,
   in no document, and so invisible to everything here. A professor saying a
