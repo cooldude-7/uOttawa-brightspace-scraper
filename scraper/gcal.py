@@ -3,6 +3,7 @@ Puts accepted deadlines into your Google Calendar.
 
     python -m pip install google-auth-oauthlib google-api-python-client
     python gcal.py --setup      authorise once, in a browser
+    python gcal.py --setup --port 8765    same, from a machine with one
     python gcal.py --push       send everything already accepted
     python gcal.py --list       show what this app has put there
     python gcal.py --check      compare the calendar against your decisions
@@ -17,6 +18,7 @@ can always find its own again. Nothing else is ever touched.
 """
 
 import json
+import os
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -43,7 +45,7 @@ TIMEZONE = "America/Toronto"
 MARKER = "[brightspace-scraper]"
 
 
-def service(interactive=False, force=False):
+def service(interactive=False, force=False, port=0):
     """An authorised Calendar client, or None with an explanation printed."""
     try:
         from google.auth.transport.requests import Request
@@ -109,7 +111,25 @@ def service(interactive=False, force=False):
             print(f"  Missing {CLIENT_FILE.name}. See the setup steps.")
             return None
         flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_FILE), SCOPES)
-        creds = flow.run_local_server(port=0, prompt="consent")
+        # The Pi has no browser and no display, so opening one silently does
+        # nothing and the flow just hangs. Print the URL instead, and take a
+        # fixed port so it can be reached from a machine that does have one:
+        #
+        #     on Windows:  ssh -L 8765:localhost:8765 luca67@LUCAPI.local
+        #     on the Pi:   python gcal.py --setup --port 8765
+        #
+        # Google's redirect comes back to localhost:8765 in the laptop's
+        # browser, down the tunnel, to the server waiting here. Nothing is
+        # exposed and no secret is copied between machines.
+        headless = not os.environ.get("DISPLAY")
+        if headless:
+            print("\n  No display here, so the link is printed rather than opened.")
+            if not port:
+                print("  Without --port this picks a random one, which an ssh"
+                      "\n  tunnel cannot be set up for in advance. Use:"
+                      "\n      python gcal.py --setup --port 8765\n")
+        creds = flow.run_local_server(port=port, prompt="consent",
+                                      open_browser=not headless)
         TOKEN_FILE.write_text(creds.to_json(), encoding="utf-8")
 
     return build("calendar", "v3", credentials=creds, cache_discovery=False)
@@ -272,7 +292,14 @@ def main():
         return
 
     if "--setup" in argv:
-        api = service(interactive=True, force="--force" in argv)
+        port = 0
+        if "--port" in argv:
+            try:
+                port = int(argv[argv.index("--port") + 1])
+            except (IndexError, ValueError):
+                print("  --port needs a number, e.g. --port 8765")
+                return
+        api = service(interactive=True, force="--force" in argv, port=port)
         if api is None:
             return
         TOKEN_FILE.exists() and print(f"\n  Authorised. Token saved to {TOKEN_FILE.name}")

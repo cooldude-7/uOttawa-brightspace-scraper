@@ -480,10 +480,24 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   was authorised 2026-09-08 and the calendar went quiet on 2026-09-17, nine
   days later. Re-authorising buys another seven days; publishing the app is
   the fix.
-  Also: `--setup` calls `flow.run_local_server()`, which opens a browser,
-  and **the Pi has none** -- the same constraint that keeps Playwright's
-  import inside `browser_login()`. Authorise on a machine with a browser and
-  copy `google_token.json` across, or forward the port over ssh.
+  Confirmed on the real Pi: `invalid_grant: Token has been expired or
+  revoked`, nine days after authorising.
+
+  Also: `--setup` called `flow.run_local_server()`, which tries to open a
+  browser, and **the Pi has none** -- the same constraint that keeps
+  Playwright's import inside `browser_login()`. It now prints the link
+  instead when `DISPLAY` is unset, and takes `--port` so the laptop can
+  reach it through an ssh tunnel:
+
+      on Windows:  ssh -L 8765:localhost:8765 luca67@LUCAPI.local
+      on the Pi:   python gcal.py --setup --port 8765
+
+  Google's redirect lands on `localhost:8765` in the laptop's browser, goes
+  down the tunnel to the server waiting on the Pi, and the token is written
+  straight to `/mnt/data`. Nothing is exposed and no secret file is copied
+  between machines -- which matters, because `google_token.json` is one.
+  A fixed port is required: the default picks a random one, and a tunnel
+  cannot be set up in advance for a port nobody knows yet.
 - **Brightspace is not the only place a deadline lives.** MCG2360's lab
   group registration cutoff arrived as a TA's email -- nowhere in the API,
   in no document, and so invisible to everything here. A professor saying a
