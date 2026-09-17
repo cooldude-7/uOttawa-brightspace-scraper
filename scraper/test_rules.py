@@ -917,5 +917,36 @@ class AFailedReadIsNotAReadDocument(unittest.TestCase):
 
 
 
+class WorkSheetsAreRecognisedByTitle(unittest.TestCase):
+    """An underscore is a word character, so `\\btutorial\\b` missed Tutorial_1.
+
+    Professors name files that way almost exclusively -- Tutorial_1,
+    Problem_Set_3, Linear_Algebra___DGD_1. The rule matched none of them and
+    said nothing, and the student found it by asking why their tutorial
+    questions were not in the to-do list.
+    """
+
+    def test_underscored_titles_are_matched(self):
+        import posted_work
+        for title in ("Tutorial_1", "Tutorial_2", "Problem_Set_3",
+                      "Linear_Algebra___DGD_1 questions", "Practice-Questions",
+                      "worksheet_4"):
+            with self.subTest(title=title):
+                self.assertTrue(posted_work.looks_like_work(title),
+                                f"{title} is work and must be recognised")
+
+    def test_the_false_friends_still_do_not_match(self):
+        """Being too eager here fills the list with lecture slides."""
+        import posted_work
+        for title in ("Linear_Algebra___Lecture_1", "MCG2360_Syllabus_Fall_2026",
+                      "LCA_exercise_solution", "Tutorial_1_solutions",
+                      "Linear_Algebra___Lecture_2 (filled)dot product",
+                      "MCG 2360 - Marking Scheme", "Exercises_answer_key"):
+            with self.subTest(title=title):
+                self.assertFalse(posted_work.looks_like_work(title),
+                                 f"{title} is not work to do")
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

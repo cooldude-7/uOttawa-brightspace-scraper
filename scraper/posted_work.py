@@ -43,8 +43,22 @@ def tidy(title):
     return " ".join(re.sub(r"[_]+", " ", title or "").split())
 
 
+def words(title):
+    """A title with its separators turned into spaces.
+
+    An underscore is a word character to a regex, so `\btutorial\b` does not
+    match "Tutorial_1" -- the whole thing reads as one word. Professors name
+    files that way constantly: Tutorial_1, Lecture_2, Linear_Algebra___DGD_1.
+    The rule silently matched none of them, which is exactly the kind of
+    quiet miss this project exists to prevent, and the student found it by
+    asking why their tutorial questions were not in the list.
+    """
+    return re.sub(r"[_\-.]+", " ", title or "")
+
+
 def looks_like_work(title):
-    return bool(WORK.search(title or "")) and not NOT_WORK.search(title or "")
+    clean = words(title)
+    return bool(WORK.search(clean)) and not NOT_WORK.search(clean)
 
 
 def find(db):
