@@ -17,10 +17,16 @@ Windows -- or a Windows path pasted into the Pi -- is a confusing failure that
 has cost several rounds. The prompt is the tell: `luca67@LUCAPI` is the Pi,
 anything else is not.
 
-    ssh luca67@LUCAPI.local        (skip if already in)
+    ssh luca67@LUCAPI.local
 
     cd ~/uOttawa-brightspace-scraper && git pull origin main
     ...
+
+Nothing but the command on that line. A trailing note like
+`(skip if already in)` gets pasted with it and PowerShell tries to run
+`skip` as a program -- that happened, and the error it prints looks like a
+broken machine rather than a stray comment. Put the "skip this if you are
+already connected" in prose above the block, never inside it.
 
 ## State
 
