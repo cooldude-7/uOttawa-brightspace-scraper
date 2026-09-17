@@ -469,6 +469,21 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   The rest of the pipeline behaved correctly under the same failure: each
   document's error was caught individually, so the vault still built, the
   database still backed up and the push still happened.
+- **"Not authorised yet" was five different problems wearing one face.**
+  `gcal.service()` returned `None` whether `google_token.json` was absent,
+  unreadable, missing a scope, expired without a refresh token, or refused
+  a refresh by Google -- and each needs a different fix. The same mistake as
+  testing a session by looking for a cookie name. It now says which.
+  The one that does not look like an expiry: a Google Cloud OAuth app left
+  in **Testing** publishing status issues refresh tokens that stop working
+  after **seven days**, no matter what the token's own expiry says. The Pi
+  was authorised 2026-09-08 and the calendar went quiet on 2026-09-17, nine
+  days later. Re-authorising buys another seven days; publishing the app is
+  the fix.
+  Also: `--setup` calls `flow.run_local_server()`, which opens a browser,
+  and **the Pi has none** -- the same constraint that keeps Playwright's
+  import inside `browser_login()`. Authorise on a machine with a browser and
+  copy `google_token.json` across, or forward the port over ssh.
 - **Brightspace is not the only place a deadline lives.** MCG2360's lab
   group registration cutoff arrived as a TA's email -- nowhere in the API,
   in no document, and so invisible to everything here. A professor saying a

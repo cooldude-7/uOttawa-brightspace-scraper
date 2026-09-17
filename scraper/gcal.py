@@ -55,12 +55,23 @@ def service(interactive=False, force=False):
         print("    python -m pip install google-auth-oauthlib google-api-python-client")
         return None
 
+    # Why there is no client, in words. "Not authorised" covered five
+    # different causes -- never set up, an unreadable token, a missing
+    # permission, and a refresh Google refused -- and they need different
+    # fixes. Exactly the mistake CLAUDE.md records for session cookies:
+    # expired and never-had-one are indistinguishable unless you look.
+    why = None
+
     creds = None
-    if TOKEN_FILE.exists() and not force:
+    if not TOKEN_FILE.exists():
+        why = (f"{TOKEN_FILE.name} is not there, so this machine has never "
+               f"been authorised.\n  Looked in {TOKEN_FILE.parent}")
+    elif not force:
         try:
             creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
-        except Exception:
+        except Exception as e:
             creds = None
+            why = f"{TOKEN_FILE.name} is there but could not be read: {e}"
 
     # A token issued before a scope was added stays perfectly valid, so
     # "still valid" is not the same as "allowed to do what we now need".
@@ -69,15 +80,30 @@ def service(interactive=False, force=False):
     if creds and not creds.has_scopes(SCOPES):
         print("  New permission needed -- asking Google again.")
         creds = None
+        why = "the saved token does not carry a permission this now needs."
 
     if creds and creds.expired and creds.refresh_token:
         try:
             creds.refresh(Request())
-        except Exception:
+        except Exception as e:
             creds = None
+            # The common one, and it does not look like an expiry: a Google
+            # Cloud project still in "Testing" publishing status issues
+            # refresh tokens that stop working after seven days, whatever
+            # their own expiry says. The fix is to publish the app, not to
+            # authorise again -- doing that just buys another seven days.
+            why = (f"Google refused to refresh the saved token: {e}\n"
+                   "  If the OAuth app is still in Testing status, its refresh\n"
+                   "  tokens expire after 7 days. Set it to In production in the\n"
+                   "  Google Cloud console, then authorise once more.")
+    elif creds and creds.expired and not creds.refresh_token:
+        creds = None
+        why = "the saved token has expired and carries no refresh token."
 
     if not creds or not creds.valid:
         if not interactive:
+            if why:
+                print(f"  Google Calendar is not connected: {why}")
             return None
         if not CLIENT_FILE.exists():
             print(f"  Missing {CLIENT_FILE.name}. See the setup steps.")
