@@ -404,7 +404,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   "%H:%M")` directly, so a model returning "7:00 PM" instead of the 19:00 the
   prompt asks for would have raised and quietly cost an accepted deadline its
   calendar entry.
-- **`collect.py` gathers twelve tabs; `download.py` downloads from one.**
+- **`collect.py` gathers twelve tabs; `download.py` downloaded from one.**
   Content (`topics`) is the only place a file is ever fetched from, so an
   attachment on a submission folder, an announcement, a discussion post or
   the course overview is collected into `collected.json` and then never
@@ -414,8 +414,29 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `find_dates.py` does read an assignment's `CustomInstructions`, so typed
   instructions reach the extractor -- but they never become a note, so
   nothing downstream can show them either. `probe_attachments.py` lists
-  every such file from `collected.json` at no cost, and `--live` confirms
-  the download endpoint before anything is built on it.
+  every such file from `collected.json` at no cost, and `--live` confirmed
+  the endpoint before the fetcher was written:
+  `/d2l/api/le/{LE}/{oid}/dropbox/folders/{folderId}/attachments/{fileId}`
+  answered HTTP 200 with the right content type and the exact byte count.
+  `download.download_attachments()` now fetches them into the same
+  originals/extracted path Content uses, reading the lists out of
+  `collected.json` so it costs no extra requests. The measured scale on
+  GNG2101: **49 files and instruction blocks**, including all ten
+  `Instructions_Project_*.pdf`, every template, every lab manual, the AI
+  interaction log, and the project list attached to an announcement titled
+  "Action Required".
+
+  Two rules here, both because the original bug was *silence*: a file that
+  will not download is printed by name with its status and listed again at
+  the end, never swallowed; and a file already downloaded **and** extracted
+  is not re-fetched, not even asked for, for the same reason `text_hash`
+  exists. The `news/` attachment endpoint is unconfirmed -- if it answers
+  403 like `specialaccess` did, the run says so per file rather than
+  quietly having less.
+
+  Typed `CustomInstructions` are written straight to the extracted folder as
+  `<title> (instructions).txt`, HTML stripped -- no request, and on
+  Deliverable A that is 553 characters of what it actually asks for.
 - **Brightspace is not the only place a deadline lives.** MCG2360's lab
   group registration cutoff arrived as a TA's email -- nowhere in the API,
   in no document, and so invisible to everything here. A professor saying a

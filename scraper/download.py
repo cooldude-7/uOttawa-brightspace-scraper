@@ -8,6 +8,7 @@ Files land in _originals\, extracted text in extracted\.
 Run from inside the scraper folder.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -149,6 +150,110 @@ def extract(path, out_dir):
     return out, f"{len(text.split()):,} words"
 
 
+# Where a file can hang besides Content, and the endpoint that serves it.
+# collect.py gathers twelve tabs; this used to download from one. GNG2101's
+# ten deliverable briefs, every template, every lab manual and the project
+# list attached to an announcement all live here -- 49 files and instruction
+# blocks the app had never read.
+#
+# The dropbox URL was confirmed against the real thing before this was
+# written (probe_attachments.py --live: HTTP 200, right content type, exact
+# byte count). The news one is not confirmed, so a failure has to be loud
+# rather than silent -- that is the whole point of this change.
+ATTACHMENT_SOURCES = [
+    ("assignments", "Name", "Id",
+     "/d2l/api/le/{le}/{oid}/dropbox/folders/{item}/attachments/{file}"),
+    ("announcements", "Title", "Id",
+     "/d2l/api/le/{le}/{oid}/news/{item}/attachments/{file}"),
+]
+
+
+def instruction_text(value):
+    """A folder's typed instructions as plain text, or ''. Shapes vary."""
+    if isinstance(value, dict):
+        value = value.get("Text") or value.get("Html") or ""
+    return re.sub(r"<[^>]+>", " ", str(value or "")).strip()
+
+
+def download_attachments(client, raw, code):
+    """Files hanging off tabs other than Content, plus typed instructions.
+
+    `raw` is this course's entry from collected.json -- collect.py has
+    already fetched these lists, so nothing here re-asks for them.
+
+    Returns (downloaded, readable, words, failures).
+    """
+    got = read = words = 0
+    failures = []
+    oid = raw.get("id")
+    originals, extracted = ORIGINALS / code, EXTRACTED / code
+
+    for tab, title_key, id_key, template in ATTACHMENT_SOURCES:
+        for item in raw.get(tab) or []:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get(id_key)
+            for f in item.get("Attachments") or []:
+                if not isinstance(f, dict):
+                    continue
+                file_id = f.get("FileId") or f.get("Id")
+                name = safe_name(f.get("FileName") or f.get("Name") or "file")
+                if not (item_id and file_id):
+                    continue
+                dest = originals / name
+                label = name[:46]
+
+                if dest.exists() and dest.stat().st_size > 0:
+                    out = extracted / (dest.stem + ".txt")
+                    if out.exists():
+                        continue                       # had it, already read
+                else:
+                    url = template.format(le=LE, oid=oid, item=item_id, file=file_id)
+                    try:
+                        r = client.get(BASE + url, follow_redirects=True)
+                    except Exception as exc:
+                        failures.append((tab, name, f"{type(exc).__name__}"))
+                        print(f"  FAIL  {label:<48} {type(exc).__name__}")
+                        continue
+                    if r.status_code != 200:
+                        failures.append((tab, name, f"HTTP {r.status_code}"))
+                        print(f"  FAIL  {label:<48} HTTP {r.status_code}  [{tab}]")
+                        continue
+                    originals.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(r.content)
+                    got += 1
+
+                out, detail = extract(dest, extracted)
+                if out:
+                    read += 1
+                    words += int(detail.split()[0].replace(",", ""))
+                    print(f"  read  {label:<48} {detail}  [{tab}]")
+                else:
+                    print(f"  saved {label:<48} {detail}  [{tab}]")
+
+    # Typed instructions are already in hand -- no request, no failure mode,
+    # and on GNG2101 they are 553 characters of what Deliverable A asks for.
+    for item in raw.get("assignments") or []:
+        if not isinstance(item, dict):
+            continue
+        body = instruction_text(item.get("CustomInstructions"))
+        if len(body) < 20:
+            continue
+        title = safe_name(item.get("Name") or "assignment", 60)
+        out = extracted / f"{title} (instructions).txt"
+        text = f"{item.get('Name') or ''}\n\n{body}\n"
+        if out.exists() and out.read_text(encoding="utf-8") == text:
+            continue
+        extracted.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        read += 1
+        words += len(body.split())
+        print(f"  read  {title[:46]:<48} {len(body.split()):,} words  "
+              f"[instructions]")
+
+    return got, read, words, failures
+
+
 def main(client=None):
     if "pdf" not in READERS:
         print("No PDF reader installed. Run:")
@@ -161,6 +266,19 @@ def main(client=None):
 
     grand_files = grand_text = 0
     words_total = 0
+    all_failures = []
+
+    # collect.py has already fetched every tab, so the attachment lists are
+    # in hand and none of this costs a request. Run standalone after a long
+    # gap and this is simply the last scrape's copy.
+    raw_by_id = {}
+    if paths.COLLECTED.exists():
+        try:
+            raw_by_id = {c.get("id"): c for c in
+                         json.loads(paths.COLLECTED.read_text(encoding="utf-8"))}
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"  (could not read collected.json: {exc} -- "
+                  "attachments skipped this run)")
 
     for course in courses:
         code = safe_name(course["name"], 40)
@@ -200,6 +318,14 @@ def main(client=None):
                 encoding="utf-8",
             )
 
+        raw = raw_by_id.get(course["id"])
+        if raw:
+            a_got, a_read, a_words, fails = download_attachments(client, raw, code)
+            got += a_got
+            read += a_read
+            words_total += a_words
+            all_failures += [(course["name"], *f) for f in fails]
+
         grand_files += got
         grand_text += read
         note = f", {len(links)} links noted" if links else ""
@@ -208,6 +334,12 @@ def main(client=None):
     print("\n" + "=" * 64)
     print(f"{grand_files} files downloaded, {grand_text} turned into readable text")
     print(f"about {words_total:,} words to search for deadlines")
+    if all_failures:
+        print(f"\n{len(all_failures)} attachment(s) could not be fetched -- "
+              "these are files the app does not have:")
+        for name, tab, fname, why in all_failures:
+            print(f"    {why:<16} [{tab}]  {str(name)[:22]:<22} {fname[:40]}")
+
     print(f"\nOriginals: {ORIGINALS}")
     print(f"Text:      {EXTRACTED}")
 

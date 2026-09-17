@@ -762,5 +762,100 @@ class HandAddedDeadlines(unittest.TestCase):
 
 
 
+class AttachmentsOnEveryTab(unittest.TestCase):
+    """collect.py gathers twelve tabs; download.py downloaded from one.
+
+    GNG2101's ten deliverable briefs, every template and every lab manual
+    hang off submission folders. None was ever fetched, and nothing said so
+    -- no error, no skip line. Silence is the bug being guarded here.
+    """
+
+    class _Reply:
+        headers = {}
+
+        def __init__(self, code, content=b""):
+            self.status_code, self.content = code, content
+
+    def _client(self, ok_ids=(), status=404):
+        outer = self
+
+        class Client:
+            def get(self, url, **kw):
+                if any(str(i) in url for i in ok_ids):
+                    return outer._Reply(200, outer._pdf())
+                return outer._Reply(status)
+
+        return Client()
+
+    def _pdf(self):
+        import pymupdf
+        doc = pymupdf.open()
+        doc.new_page().insert_text((72, 100), "Instructions for Project A. "
+                                              "Submit a signed team contract.")
+        return doc.tobytes()
+
+    def _sandbox(self):
+        import importlib
+        import os
+        tmp = tempfile.mkdtemp()
+        Path(tmp, ".brightspace-data").write_text("x", encoding="utf-8")
+        os.environ["BRIGHTSPACE_DATA"] = tmp
+        import paths
+        importlib.reload(paths)
+        import download
+        importlib.reload(download)
+        return download, paths
+
+    def _course(self, attachments=True):
+        return {"id": 614949,
+                "name": "GNG2101  C01  Into Prod Dev For En/Cs  [ LAB ]  20269",
+                "assignments": [{
+                    "Id": 410521, "Name": "Project Deliverable A",
+                    "Attachments": ([{"FileId": 25599705,
+                                      "FileName": "Instructions_Project_A.pdf"}]
+                                    if attachments else []),
+                    "CustomInstructions": {
+                        "Text": "<p>Submit <b>one PDF</b> per team.</p>"}}]}
+
+    def test_a_file_that_will_not_download_is_named_never_swallowed(self):
+        dl, _paths = self._sandbox()
+        _got, _read, _words, fails = dl.download_attachments(
+            self._client(ok_ids=(), status=403), self._course(), "GNG2101")
+        self.assertEqual(len(fails), 1, "a failed attachment must be reported")
+        self.assertIn("Instructions_Project_A.pdf", fails[0][1])
+        self.assertIn("403", fails[0][2])
+
+    def test_typed_instructions_are_kept_as_plain_text(self):
+        """553 characters of what Deliverable A asks for, and no request."""
+        dl, paths_ = self._sandbox()
+        dl.download_attachments(self._client(), self._course(attachments=False),
+                                "GNG2101")
+        written = list((paths_.EXTRACTED / "GNG2101").glob("*(instructions).txt"))
+        self.assertEqual(len(written), 1)
+        body = written[0].read_text(encoding="utf-8")
+        self.assertIn("Submit", body)
+        self.assertNotIn("<b>", body, "HTML tags must not reach the extractor")
+
+    def test_a_file_already_read_is_not_fetched_again(self):
+        """Same reason text_hash exists: a routine scrape must cost nothing."""
+        dl, _paths = self._sandbox()
+        course = self._course()
+        first = dl.download_attachments(self._client(ok_ids=(25599705,)),
+                                        course, "GNG2101")
+        self.assertEqual(first[0], 1, "downloaded once")
+
+        asked = []
+
+        class Counting:
+            def get(self, url, **kw):
+                asked.append(url)
+                return AttachmentsOnEveryTab._Reply(200, b"")
+
+        second = dl.download_attachments(Counting(), course, "GNG2101")
+        self.assertEqual(second[0], 0, "must not download it a second time")
+        self.assertEqual(asked, [], "must not even ask")
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
