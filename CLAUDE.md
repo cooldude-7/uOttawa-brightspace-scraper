@@ -430,9 +430,11 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   will not download is printed by name with its status and listed again at
   the end, never swallowed; and a file already downloaded **and** extracted
   is not re-fetched, not even asked for, for the same reason `text_hash`
-  exists. The `news/` attachment endpoint is unconfirmed -- if it answers
-  403 like `specialaccess` did, the run says so per file rather than
-  quietly having less.
+  exists. The `news/` attachment endpoint was written unconfirmed and
+  **works** -- `/d2l/api/le/{LE}/{oid}/news/{id}/attachments/{fileId}`
+  returned the project-list PDF on the first real run. First pass on the
+  real corpus: **43 files downloaded in GNG2101 and zero failures**, taking
+  the whole corpus from ~90,000 words to **149,879**.
 
   Typed `CustomInstructions` are written straight to the extracted folder as
   `<title> (instructions).txt`, HTML stripped -- no request, and on
