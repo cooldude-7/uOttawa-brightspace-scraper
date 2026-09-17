@@ -501,7 +501,7 @@ class PostedWorkWithNoDeadline(unittest.TestCase):
         import posted_work as pw
         with lab_files({"Linear_Algebra___DGD_1 questions": "1. Find the span...",
                         "Linear_Algebra___Lecture_2": "Vectors and dot products"}) as db:
-            added, names = pw.load(db)
+            added, _promoted, names = pw.load(db)
             self.assertEqual(added, 1, "the lecture is not work to do")
             row = db.execute("SELECT * FROM dates").fetchone()
             self.assertEqual(row["title"], "Linear Algebra DGD 1 questions")
@@ -995,6 +995,49 @@ class PostedWorkLandsInTheTodoTab(unittest.TestCase):
         self.assertIsNotNone(
             db.execute("SELECT done_at FROM dates").fetchone()["done_at"],
             "it stays until crossed off, and crossing off must stick")
+
+
+
+class AdoptingWorkAnEarlierRunQueued(unittest.TestCase):
+    """The fix only applied to new inserts, so the four already stored stayed.
+
+    They were saved as `new` before posted_work kept them outright, so
+    nothing new gets inserted and they sit in the deadline cards forever.
+    `--store` adopts them -- but a row the student dismissed must stay
+    dismissed, which is the rule this guards.
+    """
+
+    def _promote(self, db, cid, title):
+        """Exactly the statement posted_work.load() runs."""
+        n = db.execute(
+            """UPDATE dates SET status = 'accepted', decided_at = ?
+                WHERE course_id = ? AND resolved_title = ?
+                  AND due_date IS NULL AND status = 'new'""",
+            (store.now(), cid, store.normalize(title))).rowcount
+        db.commit()
+        return n
+
+    def test_a_queued_row_is_moved_into_the_todo_list(self):
+        db = fresh_db()
+        cid = add_course(db)
+        add_date(db, cid, "Tutorial 1", due=None, kind="todo", status="new",
+                 key="k-t1")
+        db.commit()
+        self.assertEqual(self._promote(db, cid, "Tutorial 1"), 1)
+        self.assertEqual(
+            db.execute("SELECT status FROM dates").fetchone()["status"], "accepted")
+
+    def test_a_dismissed_row_is_never_resurrected(self):
+        """You decided against it. Nothing here may undo that."""
+        db = fresh_db()
+        cid = add_course(db)
+        add_date(db, cid, "Tutorial 2", due=None, kind="todo",
+                 status="dismissed", key="k-t2")
+        db.commit()
+        self.assertEqual(self._promote(db, cid, "Tutorial 2"), 0,
+                         "a dismissed row must stay dismissed")
+        self.assertEqual(
+            db.execute("SELECT status FROM dates").fetchone()["status"], "dismissed")
 
 
 

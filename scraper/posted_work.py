@@ -95,8 +95,17 @@ def find(db):
 
 
 def load(db):
-    """Store each as an undated to-do. Returns (added, [names])."""
-    added, names = 0, []
+    """Store each as an undated to-do. -> (added, promoted, [names]).
+
+    Promoted counts rows an earlier run had already stored as `new`, back
+    when these went into the deadline cards instead of the To-do tab. They
+    are already in the database, so nothing new is inserted and they would
+    stay queued forever -- `--store` adopts them instead.
+
+    Only `new` is ever promoted. A row you dismissed stays dismissed: this
+    must never resurrect something you decided against.
+    """
+    added, promoted, names = 0, 0, []
     for course_id, course_name, title, doc_id in find(db):
         # Kept, not queued. Running --store is itself the decision: the
         # command without it prints the list and changes nothing, so by the
@@ -126,8 +135,22 @@ def load(db):
                    AND title = ? AND due_date IS NULL AND linked_to IS NULL""",
                 (course_id, tidy(title)))
             names.append((store.course_parts(course_name)["code"], tidy(title)))
+        else:
+            # Already stored, and possibly still waiting in the cards from a
+            # run before these were kept outright. `status = 'new'` is what
+            # keeps a dismissed row dismissed.
+            changed = db.execute(
+                """UPDATE dates SET status = 'accepted', decided_at = ?
+                    WHERE course_id = ? AND resolved_title = ?
+                      AND due_date IS NULL AND status = 'new'""",
+                (store.now(), course_id, store.normalize(tidy(title)))).rowcount
+            if changed:
+                promoted += changed
+                names.append((store.course_parts(course_name)["code"],
+                              tidy(title) + "   (moved out of the cards)"))
         added += n
-    return added, names
+    db.commit()
+    return added, promoted, names
 
 
 def main(argv):
@@ -146,12 +169,22 @@ def main(argv):
                   f"Nothing stored -- add --store.\n")
             return
 
-        added, names = load(db)
+        added, promoted, names = load(db)
         db.commit()
-        print(f"\n  {added} added as undated to-do{'s' if added != 1 else ''}"
-              + (" (the rest were already there)" if added < len(matches) else ""))
+        done = added + promoted
+        bits = []
+        if added:
+            bits.append(f"{added} added")
+        if promoted:
+            bits.append(f"{promoted} moved out of the deadline cards")
+        print(f"\n  {' and '.join(bits) if bits else 'nothing changed'}"
+              + (" -- the rest were already in your To-do list"
+                 if done < len(matches) else ""))
         for code, title in names:
             print(f"    {code:<9} {title[:58]}")
+        if done:
+            print("\n  They have no date, by design, and stay in the To-do tab"
+                  "\n  until you cross them off.")
         print()
     finally:
         db.close()

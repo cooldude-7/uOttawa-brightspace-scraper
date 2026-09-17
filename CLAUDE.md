@@ -541,6 +541,14 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   it is typed. Same reasoning as `add.py`. `save_dates()` takes `status`
   for this and still defaults to `new`, because `find_dates` is guessing
   and must keep queueing for review.
+
+  That only fixed new inserts, and the four already on file stayed queued --
+  `save_dates()` skips a duplicate, so re-running stored nothing and changed
+  nothing. `--store` now **adopts** them: any matching row still `new` and
+  undated becomes accepted, and is reported separately as "moved out of the
+  deadline cards". `status = 'new'` in that `UPDATE` is what keeps a
+  dismissed row dismissed -- nothing here may undo a decision the student
+  made, which is one of the suite's oldest guards.
 - **The `documents` table is not the list of documents.** A row only appears
   there once `find_dates` judged the text worth an API call, and that test
   (`worth_reading`) is "does it contain dates or task language". A document
