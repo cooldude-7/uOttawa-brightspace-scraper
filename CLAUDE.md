@@ -28,6 +28,14 @@ Nothing but the command on that line. A trailing note like
 broken machine rather than a stray comment. Put the "skip this if you are
 already connected" in prose above the block, never inside it.
 
+**Never put alternatives in one block either.** Three `--section` commands
+were offered as C1/C2/C3 with `#` comments saying which was which; the
+student pasted all three, each ran in turn, and the last one silently
+won -- setting the wrong section, which is the one setting that *hides*
+real deadlines. If only one of several commands should be run, ask which
+one first and then give a single command. The terminal has no undo and a
+pasted block runs every line in it.
+
 ## State
 
 Working end to end: login → scrape → download → read → store → link tasks →
