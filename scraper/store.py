@@ -583,6 +583,39 @@ def audience(title):
             day_group(text))
 
 
+def field(row, name):
+    """A column that may not be in the SELECT. Works for Row and dict alike."""
+    try:
+        keys = row.keys()
+    except AttributeError:
+        return None
+    return row[name] if name in keys else None
+
+
+def row_audience(row):
+    """Who a row is for, counting the thing it hangs off.
+
+    `only_mine()` read the title and nothing else. A linked to-do carries
+    its audience in `linked_to`, not in its own title -- "Complete the
+    pre-lab reading" linked to "Lab 2 (Wednesday Groups)" renders in the app
+    as "before Lab 2 (Wednesday Groups)" and named no day of its own, so it
+    survived every filter and a Thursday student was told to finish
+    something before a Wednesday lab.
+
+    The task inherits its anchor's audience, never overrides it: a title
+    that names a section or day wins, and the anchor only fills a blank.
+    """
+    section, group = audience(row["title"])
+    if section and group:
+        return section, group
+    anchored = field(row, "linked_to")
+    if anchored:
+        a_section, a_group = audience(anchored)
+        section = section or a_section
+        group = group or a_group
+    return section, group
+
+
 def normalize(title):
     """Reduce a title to the event it names, keeping who it is for.
 
@@ -873,7 +906,7 @@ def only_mine(rows, course_key="course_d2l_id"):
     # project exists to prevent.
     seen = {}
     for row in rows:
-        section, group = audience(row["title"])
+        section, group = row_audience(row)
         by_course = seen.setdefault(str(row[course_key]), (set(), set()))
         if section:
             by_course[0].add(section.lower())
@@ -892,7 +925,7 @@ def only_mine(rows, course_key="course_d2l_id"):
     kept = []
     for row in rows:
         course = str(row[course_key])
-        section, group = audience(row["title"])
+        section, group = row_audience(row)
         # A deadline naming no section belongs to everyone; only one naming
         # somebody else's is dropped.
         if (section and course in sections and ("section", course) not in stale
@@ -927,7 +960,7 @@ def stale_sections(rows, course_key="course_d2l_id"):
 
     found = {"section": {}, "lab day": {}}
     for row in rows:
-        section, group = audience(row["title"])
+        section, group = row_audience(row)
         course = str(row[course_key])
         if section:
             found["section"].setdefault(course, set()).add(section.lower())

@@ -310,6 +310,19 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `store.py --group MCG2360 thursday` sets it (abbreviations accepted,
   `off` clears it), `store.py --me` prints every filter in force, and the
   stale check now covers lab days and names which kind it means.
+
+  **And a third layer under that: a linked to-do names no day of its own.**
+  `only_mine()` read `row["title"]` and nothing else, but a task from
+  `link_tasks.py` carries its audience in `linked_to` -- which is exactly
+  what the card renders. "Complete the pre-lab reading" hanging off "Lab 2
+  Report Submission (Wednesday Groups)" displays as *"before Lab 2
+  (Wednesday Groups)"*, matched no day in its own title, and survived every
+  filter. `store.row_audience()` now falls back to the anchor: a task
+  inherits its anchor's section and day, but a title that names one of its
+  own always wins, because the task's own wording is the better evidence.
+  Use `row_audience(row)`, never `audience(row["title"])`, anywhere a row is
+  being filtered. Measured on the real shape: 11 rows in, 6 out, with every
+  spelling of Wednesday gone and the WHMIS upload and mid-term untouched.
   `store.only_mine()` applies it, and the card list, the vault and
   `prep.py` all go through it — it was once inline in `cards()` and the other
   two showed all five sections. `gcal.py --prune` cleans up anything accepted

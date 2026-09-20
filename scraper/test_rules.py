@@ -1142,5 +1142,55 @@ class TheLabDayCanActuallyBeSet(unittest.TestCase):
 
 
 
+class ALinkedTodoInheritsItsAnchorsGroup(unittest.TestCase):
+    """"Complete before Wednesday lab" on a Thursday student's list.
+
+    only_mine() read the title and nothing else. A linked to-do carries its
+    audience in `linked_to`, which is exactly what the card renders -- so a
+    task named "Complete the pre-lab reading" hanging off "Lab 2 (Wednesday
+    Groups)" showed as "before Lab 2 (Wednesday Groups)", named no day of
+    its own, and survived every filter.
+    """
+
+    def _prefs(self, tmp):
+        path = Path(tmp) / "me.json"
+        path.write_text('{"groups": {"604": "thursday"}}', encoding="utf-8")
+        return path
+
+    def test_another_days_anchor_takes_its_task_with_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old, store.PREFS_PATH = store.PREFS_PATH, self._prefs(tmp)
+            try:
+                rows = [
+                    {"course_d2l_id": 604, "title": "Complete the pre-lab reading",
+                     "linked_to": "Lab 2 Report Submission (Wednesday Groups)"},
+                    {"course_d2l_id": 604, "title": "Complete the pre-lab reading",
+                     "linked_to": "Lab 2 Report Submission (Thursday Groups)"},
+                    {"course_d2l_id": 604, "title": "Read the manual",
+                     "linked_to": "Lab 1 report due (Wed group)"},
+                    {"course_d2l_id": 604, "title": "Buy safety glasses",
+                     "linked_to": None},
+                ]
+                kept = store.only_mine(rows)
+                self.assertEqual(len(kept), 2)
+                self.assertEqual([r["linked_to"] for r in kept],
+                                 ["Lab 2 Report Submission (Thursday Groups)", None])
+            finally:
+                store.PREFS_PATH = old
+
+    def test_a_day_in_the_title_still_wins_over_the_anchor(self):
+        """The task's own wording is the better evidence; the anchor fills a
+        blank, it never overrides."""
+        row = {"title": "Prep for the Thursday group session",
+               "linked_to": "Lab 2 (Wednesday Groups)"}
+        self.assertEqual(store.row_audience(row)[1], "thursday")
+
+    def test_a_row_without_the_column_does_not_raise(self):
+        """Not every query selects linked_to, and a crash here empties a list."""
+        self.assertEqual(store.row_audience({"title": "Lab 1 (Thu group)"}),
+                         ("", "thursday"))
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
