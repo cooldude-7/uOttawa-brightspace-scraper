@@ -535,6 +535,40 @@ def fingerprint(text):
 SECTION_RE = re.compile(r"\b([a-e])\s*(\d)\b")
 GROUP_RE = re.compile(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b")
 
+# The same professor writes both "(Thursday Groups)" and "(Thu group)". Only
+# the first was recognised, so half of MCG2360's lab rows carried no audience
+# at all -- and a row with no audience cannot be filtered, so every Wednesday
+# deadline stayed on a Thursday student's list.
+#
+# An abbreviation is only read as a day when a group word sits beside it.
+# Bare "wed", "sat" and "sun" are ordinary English, and a false match here
+# does not add a row, it *hides* one -- the direction that is not
+# recoverable. "(Thu group)" qualifies; "he sat the exam" does not.
+SHORT_DAYS = {"mon": "monday", "tue": "tuesday", "tues": "tuesday",
+              "wed": "wednesday", "weds": "wednesday", "thu": "thursday",
+              "thur": "thursday", "thurs": "thursday", "fri": "friday",
+              "sat": "saturday", "sun": "sunday"}
+_SHORT = "|".join(sorted(SHORT_DAYS, key=len, reverse=True))
+_QUALIFIER = r"group|groups|section|sections|lab|labs|class|classes"
+SHORT_GROUP_RE = re.compile(
+    rf"\b({_SHORT})\b[\s.,)\-]*(?:{_QUALIFIER})\b"
+    rf"|(?:{_QUALIFIER})[\s.,(\-]*\b({_SHORT})\b", re.I)
+
+
+def day_group(text):
+    """The weekday a title names, written out, or "".
+
+    Full day names count anywhere; abbreviations only next to a group word.
+    """
+    full = GROUP_RE.search(text)
+    if full:
+        return full.group(1)
+    short = SHORT_GROUP_RE.search(text)
+    if short:
+        word = (short.group(1) or short.group(2) or "").lower()
+        return SHORT_DAYS.get(word, "")
+    return ""
+
 
 def audience(title):
     """Who a deadline is for: a lab section (A3) or a day group (Wednesday).
@@ -545,9 +579,8 @@ def audience(title):
     """
     text = (title or "").lower()
     section = SECTION_RE.search(text)
-    group = GROUP_RE.search(text)
     return (f"{section.group(1)}{section.group(2)}" if section else "",
-            group.group(1) if group else "")
+            day_group(text))
 
 
 def normalize(title):

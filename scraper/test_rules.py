@@ -1041,5 +1041,52 @@ class AdoptingWorkAnEarlierRunQueued(unittest.TestCase):
 
 
 
+class AbbreviatedDayGroups(unittest.TestCase):
+    """MCG2360 writes both "(Thursday Groups)" and "(Thu group)".
+
+    Only the full name was recognised, so half the lab rows carried no
+    audience -- and a row with no audience cannot be filtered, so every
+    Wednesday deadline stayed on a Thursday student's list. The student
+    reported the lab group was still wrong in the app.
+    """
+
+    def test_the_real_titles_resolve_to_a_day(self):
+        for title, day in (
+                ("Lab 1 Report Submission (Thursday Groups)", "thursday"),
+                ("Lab 1 report due (Thu group)", "thursday"),
+                ("Lab 2 report due (Thurs group)", "thursday"),
+                ("Lab 1 Report Submission (Wednesday Groups)", "wednesday"),
+                ("Lab 4 report due (Wed group)", "wednesday"),
+                ("Group Thu - Lab 3", "thursday")):
+            with self.subTest(title=title):
+                self.assertEqual(store.audience(title)[1], day)
+
+    def test_an_everyday_word_is_not_read_as_a_day(self):
+        """A false match does not add a row, it hides one. Be strict."""
+        for title in ("He sat the exam", "Sun exposure lab report",
+                      "Saturn orbit assignment", "Monitor calibration",
+                      "Wed lecture notes"):
+            with self.subTest(title=title):
+                self.assertEqual(store.audience(title)[1], "",
+                                 f"{title} names no lab group")
+
+    def test_another_groups_deadline_is_filtered_out(self):
+        """The whole point: Wednesday rows must leave a Thursday list."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "me.json"
+            prefs.write_text('{"groups": {"12345": "thursday"}}', encoding="utf-8")
+            old, store.PREFS_PATH = store.PREFS_PATH, prefs
+            try:
+                rows = [{"course_d2l_id": 12345,
+                         "title": "Lab 1 report due (Thu group)"},
+                        {"course_d2l_id": 12345,
+                         "title": "Lab 1 report due (Wed group)"}]
+                kept = [r["title"] for r in store.only_mine(rows)]
+                self.assertEqual(kept, ["Lab 1 report due (Thu group)"])
+            finally:
+                store.PREFS_PATH = old
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

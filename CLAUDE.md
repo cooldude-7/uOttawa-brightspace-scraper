@@ -287,7 +287,17 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   matching their personal due date against the text, and the **Thursday** group
   in MCG2360 (A02 tutorial, Thu 19:00 — from their timetable, since
   `mysection.py` works out sections but not day groups). Both live in
-  `me.json`. `store.only_mine()` applies it, and the card list, the vault and
+  `me.json`. **The same professor writes the group both ways**: MCG2360 has
+  "Lab 1 Report Submission (Thursday Groups)" *and* "Lab 1 report due (Thu
+  group)". `GROUP_RE` matched only full day names, so every abbreviated row
+  carried no audience at all -- and a row with no audience cannot be
+  filtered, so a Thursday student kept seeing every Wednesday deadline.
+  `store.day_group()` reads abbreviations too, but **only when a group word
+  sits beside them** (`group`, `section`, `lab`, `class`): bare "wed", "sat"
+  and "sun" are ordinary English, and a false match here does not add a row,
+  it *hides* one. `only_mine()` reads the title live, so the fix needs no
+  database rebuild -- only a restart of whatever is running.
+  `store.only_mine()` applies it, and the card list, the vault and
   `prep.py` all go through it — it was once inline in `cards()` and the other
   two showed all five sections. `gcal.py --prune` cleans up anything accepted
   before the filter knew.
