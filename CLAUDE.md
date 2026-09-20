@@ -321,8 +321,23 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   inherits its anchor's section and day, but a title that names one of its
   own always wins, because the task's own wording is the better evidence.
   Use `row_audience(row)`, never `audience(row["title"])`, anywhere a row is
-  being filtered. Measured on the real shape: 11 rows in, 6 out, with every
-  spelling of Wednesday gone and the WHMIS upload and mid-term untouched.
+  being filtered.
+
+  **Inheriting unconditionally was itself the bug, and it hid real work.**
+  Five MCG2360 tasks -- read the Instron 6800 manual, prepare the lab book,
+  visit Laboratory Resources, and both halves of the WHMIS training, **two
+  of them already accepted and one due in three days** -- all hung off
+  "Lab 1: Tensile Test (Wednesday groups)", because that is simply the copy
+  `link_tasks` picked. They belong to everybody, and every one vanished from
+  a Thursday list. The student noticed within the hour; nothing else would
+  have.
+
+  So a task inherits its anchor's audience **only when another group has its
+  own copy of that task** -- `store.parallel_tasks()` finds those, by the
+  same normalized title hanging off anchors with different audiences. One
+  copy means one arbitrary anchor choice, and filtering on it loses work.
+  The rule is worth stating plainly: *a per-group task exists once per
+  group; a task that exists once is everyone's.*
   `store.only_mine()` applies it, and the card list, the vault and
   `prep.py` all go through it — it was once inline in `cards()` and the other
   two showed all five sections. `gcal.py --prune` cleans up anything accepted

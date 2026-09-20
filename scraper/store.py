@@ -592,21 +592,24 @@ def field(row, name):
     return row[name] if name in keys else None
 
 
-def row_audience(row):
-    """Who a row is for, counting the thing it hangs off.
+def row_audience(row, inherit=True):
+    """Who a row is for. `inherit` counts the thing it hangs off.
 
-    `only_mine()` read the title and nothing else. A linked to-do carries
-    its audience in `linked_to`, not in its own title -- "Complete the
-    pre-lab reading" linked to "Lab 2 (Wednesday Groups)" renders in the app
-    as "before Lab 2 (Wednesday Groups)" and named no day of its own, so it
-    survived every filter and a Thursday student was told to finish
-    something before a Wednesday lab.
+    A linked to-do can carry its audience in `linked_to` rather than its own
+    title -- and that is what the card renders, so "before Lab 2 (Wednesday
+    Groups)" showed up on a Thursday list.
 
-    The task inherits its anchor's audience, never overrides it: a title
-    that names a section or day wins, and the anchor only fills a blank.
+    But inheriting it unconditionally hid five real MCG2360 tasks, two of
+    them already accepted: "Read the Instron 6800 operating manual",
+    "Prepare lab book ahead of each lab", the WHMIS training and so on were
+    all linked to "Lab 1: Tensile Test (Wednesday groups)" simply because
+    that is the anchor `link_tasks` happened to pick. They belong to
+    everybody. So inheriting is only safe where `parallel_tasks()` has found
+    a matching task hanging off another group's copy of the same lab --
+    see there. The title always wins over the anchor.
     """
     section, group = audience(row["title"])
-    if section and group:
+    if not inherit or (section and group):
         return section, group
     anchored = field(row, "linked_to")
     if anchored:
@@ -614,6 +617,29 @@ def row_audience(row):
         section = section or a_section
         group = group or a_group
     return section, group
+
+
+def parallel_tasks(rows, course_key="course_d2l_id"):
+    """Linked tasks that really are per-group. -> {(course, task title)}.
+
+    A task is one group's business only if another group has its own copy:
+    "submit the report" exists once per section because each section submits
+    separately. A task that exists *once*, hanging off whichever copy of the
+    lab `link_tasks` chose, is everyone's -- and hiding it because of that
+    arbitrary choice loses real work.
+    """
+    seen = {}
+    for row in rows:
+        anchored = field(row, "linked_to")
+        if not anchored:
+            continue
+        _, a_group = audience(anchored)
+        a_section, _ = audience(anchored)
+        if not (a_group or a_section):
+            continue
+        key = (str(row[course_key]), normalize(row["title"]))
+        seen.setdefault(key, set()).add((a_section, a_group))
+    return {key for key, found in seen.items() if len(found) > 1}
 
 
 def normalize(title):
@@ -904,9 +930,17 @@ def only_mine(rows, course_key="course_d2l_id"):
     # somebody else's. Filtering is skipped for such a course: showing a few
     # extra rows is a nuisance, hiding every real one is the failure this
     # project exists to prevent.
+    # Inheriting an anchor's audience is only safe for a task another group
+    # also has its own copy of. Worked out once, over the whole list.
+    parallel = parallel_tasks(rows, course_key)
+
+    def whose(row):
+        key = (str(row[course_key]), normalize(row["title"]))
+        return row_audience(row, inherit=key in parallel)
+
     seen = {}
     for row in rows:
-        section, group = row_audience(row)
+        section, group = whose(row)
         by_course = seen.setdefault(str(row[course_key]), (set(), set()))
         if section:
             by_course[0].add(section.lower())
@@ -925,7 +959,7 @@ def only_mine(rows, course_key="course_d2l_id"):
     kept = []
     for row in rows:
         course = str(row[course_key])
-        section, group = row_audience(row)
+        section, group = whose(row)
         # A deadline naming no section belongs to everyone; only one naming
         # somebody else's is dropped.
         if (section and course in sections and ("section", course) not in stale

@@ -1166,15 +1166,20 @@ class ALinkedTodoInheritsItsAnchorsGroup(unittest.TestCase):
                      "linked_to": "Lab 2 Report Submission (Wednesday Groups)"},
                     {"course_d2l_id": 604, "title": "Complete the pre-lab reading",
                      "linked_to": "Lab 2 Report Submission (Thursday Groups)"},
+                    # One copy only: everyone's work, whichever lab
+                    # link_tasks hung it off. Must survive.
                     {"course_d2l_id": 604, "title": "Read the manual",
                      "linked_to": "Lab 1 report due (Wed group)"},
                     {"course_d2l_id": 604, "title": "Buy safety glasses",
                      "linked_to": None},
                 ]
                 kept = store.only_mine(rows)
-                self.assertEqual(len(kept), 2)
                 self.assertEqual([r["linked_to"] for r in kept],
-                                 ["Lab 2 Report Submission (Thursday Groups)", None])
+                                 ["Lab 2 Report Submission (Thursday Groups)",
+                                  "Lab 1 report due (Wed group)", None],
+                                 "the pre-lab reading exists once per group so "
+                                 "the Wednesday one goes; the manual exists "
+                                 "once at all, so it stays")
             finally:
                 store.PREFS_PATH = old
 
@@ -1232,6 +1237,74 @@ class FilteringIsPerCourseOnly(unittest.TestCase):
                                  "course with no setting loses nothing")
             finally:
                 store.PREFS_PATH = old
+
+
+
+class ATaskWithOneCopyBelongsToEveryone(unittest.TestCase):
+    """The regression that hid the Instron manual, and how it is bounded.
+
+    Five real MCG2360 tasks -- read the Instron 6800 manual, prepare the lab
+    book, visit Laboratory Resources, and both halves of the WHMIS training,
+    two of them already accepted -- all hung off "Lab 1: Tensile Test
+    (Wednesday groups)", because that is the copy link_tasks happened to
+    pick. Inheriting the anchor's day hid every one of them from a Thursday
+    student. They belong to everybody.
+
+    A task is one group's business only when another group has its own copy.
+    """
+
+    ANCHOR_WED = "Lab 1: Tensile Test (Wednesday groups)"
+    ANCHOR_THU = "Lab 1: Tensile Test (Thursday groups)"
+
+    def _rows(self, *pairs):
+        return [{"course_d2l_id": 604, "title": title, "linked_to": anchor}
+                for title, anchor in pairs]
+
+    def _thursday(self, tmp):
+        path = Path(tmp) / "me.json"
+        path.write_text('{"groups": {"604": "thursday"}}', encoding="utf-8")
+        return path
+
+    def test_a_task_hanging_off_another_groups_lab_is_still_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old, store.PREFS_PATH = store.PREFS_PATH, self._thursday(tmp)
+            try:
+                rows = self._rows(
+                    ("Read the Instron 6800 operating manual", self.ANCHOR_WED),
+                    ("Complete WHIMS training and upload certificate",
+                     self.ANCHOR_WED),
+                    # present so the setting does not read as stale
+                    ("Lab 1 Report Submission (Thursday Groups)", None),
+                    ("Lab 1 Report Submission (Wednesday Groups)", None),
+                )
+                kept = [r["title"] for r in store.only_mine(rows)]
+                self.assertIn("Read the Instron 6800 operating manual", kept,
+                              "one copy means it is everyone's work")
+                self.assertIn("Complete WHIMS training and upload certificate",
+                              kept)
+                self.assertNotIn("Lab 1 Report Submission (Wednesday Groups)",
+                                 kept, "the report itself is still per-group")
+            finally:
+                store.PREFS_PATH = old
+
+    def test_a_task_each_group_has_its_own_copy_of_is_filtered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old, store.PREFS_PATH = store.PREFS_PATH, self._thursday(tmp)
+            try:
+                rows = self._rows(("Write up the results", self.ANCHOR_WED),
+                                  ("Write up the results", self.ANCHOR_THU))
+                kept = store.only_mine(rows)
+                self.assertEqual(len(kept), 1)
+                self.assertEqual(kept[0]["linked_to"], self.ANCHOR_THU)
+            finally:
+                store.PREFS_PATH = old
+
+    def test_parallel_tasks_needs_two_different_audiences(self):
+        rows = self._rows(("Write up the results", self.ANCHOR_WED))
+        self.assertEqual(store.parallel_tasks(rows), set(),
+                         "one copy is not a parallel task")
+        rows += self._rows(("Write up the results", self.ANCHOR_THU))
+        self.assertEqual(len(store.parallel_tasks(rows)), 1)
 
 
 
