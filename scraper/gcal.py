@@ -9,6 +9,7 @@ Puts accepted deadlines into your Google Calendar.
     python gcal.py --check      compare the calendar against your decisions
     python gcal.py --prune      remove other sections' deadlines you accepted
                                 before the app knew which section is yours
+    python gcal.py --tidy       remove events for cards you no longer keep
     python gcal.py --remove-all take it all back out again
     python gcal.py --separate   move them to their own calendar you can hide
     python gcal.py --primary    move them back to your main calendar
@@ -430,12 +431,28 @@ def main():
             for row in missing[:8]:
                 print(f"      {row['due_date']}  {row['title'][:44]}")
         if orphan_ids:
-            print(f"  {len(orphan_ids)} event(s) for cards you no longer keep:")
+            print(f"\n  {len(orphan_ids)} event(s) for cards you no longer keep:")
             for row in orphan_ids[:8]:
                 print(f"      {row['title'][:52]}")
-        if on_calendar != linked:
-            print(f"  Google has {on_calendar} but {linked} are recorded here --")
-            print("  an event was probably deleted in Google Calendar directly.")
+            print("\n  Remove just those:  python gcal.py --tidy")
+
+        # An orphan is still an event on Google, so the total this app knows
+        # about is linked + orphans. Comparing against `linked` alone reported
+        # a surplus that was really just the orphans listed above, and then
+        # blamed it on a deletion in Google -- which is the opposite
+        # direction. Say which way it actually goes.
+        known = linked + len(orphan_ids)
+        if on_calendar != known:
+            missing_there = known - on_calendar
+            print(f"\n  This app has {known} event id(s); Google has {on_calendar}.")
+            if missing_there > 0:
+                print(f"  {missing_there} were deleted in Google Calendar directly."
+                      "\n  Harmless -- `python gcal.py --push` puts back any that"
+                      "\n  belong to a card you still keep.")
+            else:
+                print(f"  {-missing_there} on Google that this app did not put"
+                      " there, or\n  put there before a database restore. "
+                      "`--list` shows them all.")
         return
 
     if "--list" in argv:
@@ -448,6 +465,39 @@ def main():
             print(f"    {when[:16]}  {e.get('summary', '')[:52]}")
         if events:
             print("\n  Remove them all:  python gcal.py --remove-all")
+        return
+
+    # Remove only the events whose card you no longer keep. --remove-all is
+    # the blunt instrument; this is the one --check tells you to reach for,
+    # and it never touches an event for something you are still keeping.
+    if "--tidy" in argv:
+        db = store.connect()
+        orphans = db.execute(
+            "SELECT id, title, gcal_event_id FROM dates WHERE status != 'accepted'"
+            " AND gcal_event_id IS NOT NULL").fetchall()
+        if not orphans:
+            db.close()
+            print("  Nothing stale on the calendar.")
+            return
+        print(f"  Removing {len(orphans)} event(s) for cards you no longer keep:")
+        gone = 0
+        for row in orphans:
+            try:
+                api.events().delete(calendarId=target(),
+                                    eventId=row["gcal_event_id"]).execute()
+            except Exception as err:
+                # Already deleted in Google is a success, not a failure: the
+                # event is gone either way and the id should stop being held.
+                if "404" not in str(err) and "410" not in str(err):
+                    print(f"      failed   {row['title'][:44]}  {err}")
+                    continue
+            db.execute("UPDATE dates SET gcal_event_id = NULL WHERE id = ?",
+                       (row["id"],))
+            gone += 1
+            print(f"      removed  {row['title'][:44]}")
+        db.commit()
+        db.close()
+        print(f"\n  {gone} removed. The cards themselves are untouched.")
         return
 
     if "--remove-all" in argv:

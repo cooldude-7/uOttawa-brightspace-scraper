@@ -148,6 +148,7 @@ python web.py              the web app; prints a phone-reachable address
 python cards.py            same list in the terminal; --review walks it
 python gcal.py --check     reconcile calendar against stored decisions
 python gcal.py --prune     drop other sections' deadlines already accepted
+python gcal.py --tidy      remove calendar events for cards you no longer keep
 python store.py --tidy     collapse duplicate events
 python mysection.py        work out which lab section the user is in
 python link_tasks.py       give undated to-dos a place in the term
@@ -549,6 +550,21 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   between machines -- which matters, because `google_token.json` is one.
   A fixed port is required: the default picks a random one, and a tunnel
   cannot be set up in advance for a port nobody knows yet.
+- **A resolved row leaves its calendar event behind.** `--check` listed
+  four "event(s) for cards you no longer keep" -- MCG2130's Assignment #1
+  to #4, the stale Saturday rows from the year typo, accepted early enough
+  to reach Google and resolved afterwards. Nothing removed them and no
+  command existed to: `--prune` is for other sections and `--remove-all`
+  takes out everything. `gcal.py --tidy` deletes exactly the orphans and
+  clears their `gcal_event_id`, leaving the cards alone; a 404 or 410 from
+  Google counts as success, because the event is gone either way and the id
+  should stop being held.
+
+  Its count line was wrong too. An orphan is still an event on Google, so
+  what this app knows about is `linked + orphans` -- comparing against
+  `linked` alone reported the orphans as a surplus and then blamed "an event
+  was probably deleted in Google", which is the opposite direction. It now
+  compares against the real total and says which way the difference goes.
 - **Brightspace is not the only place a deadline lives.** MCG2360's lab
   group registration cutoff arrived as a TA's email -- nowhere in the API,
   in no document, and so invisible to everything here. A professor saying a
