@@ -1192,5 +1192,48 @@ class ALinkedTodoInheritsItsAnchorsGroup(unittest.TestCase):
 
 
 
+class FilteringIsPerCourseOnly(unittest.TestCase):
+    """Reading a day from a title is global; acting on it is not.
+
+    row_audience() will happily report "wednesday" for any course. Only a
+    course with an entry in me.json may have anything hidden -- otherwise
+    setting MCG2360's lab day would start dropping MAT1341 tutorials that
+    merely mention a weekday, which is the silent-loss failure again.
+    """
+
+    def test_a_course_with_no_setting_keeps_everything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "me.json"
+            prefs.write_text('{"groups": {"604": "thursday"}}', encoding="utf-8")
+            old, store.PREFS_PATH = store.PREFS_PATH, prefs
+            try:
+                rows = [
+                    # MCG2360 is configured, so its Wednesday row goes. A
+                    # Thursday row has to be present or the stale guard fires
+                    # -- a setting matching nothing in the course is treated
+                    # as wrong, and nothing is hidden. That is deliberate, and
+                    # the real course has both.
+                    {"course_d2l_id": 604, "title": "Lab 1 (Thursday Groups)",
+                     "linked_to": None},
+                    {"course_d2l_id": 604, "title": "Lab 1 (Wednesday Groups)",
+                     "linked_to": None},
+                    # MAT1341 is not. This reads as Wednesday and must stay.
+                    {"course_d2l_id": 611,
+                     "title": "Complete the Wednesday tutorial sheet",
+                     "linked_to": None},
+                    {"course_d2l_id": 611, "title": "Something",
+                     "linked_to": "Wednesday review session"},
+                ]
+                self.assertEqual(store.row_audience(rows[2])[1], "wednesday",
+                                 "the day is still read")
+                kept = [r["course_d2l_id"] for r in store.only_mine(rows)]
+                self.assertEqual(kept, [604, 611, 611],
+                                 "MCG2360 loses only its Wednesday row; a "
+                                 "course with no setting loses nothing")
+            finally:
+                store.PREFS_PATH = old
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
