@@ -295,8 +295,21 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `store.day_group()` reads abbreviations too, but **only when a group word
   sits beside them** (`group`, `section`, `lab`, `class`): bare "wed", "sat"
   and "sun" are ordinary English, and a false match here does not add a row,
-  it *hides* one. `only_mine()` reads the title live, so the fix needs no
+  it *hides* one. `only_mine()` reads the title live, so that fix needs no
   database rebuild -- only a restart of whatever is running.
+
+  **And it was still not enough, because the group could not be set.**
+  `sections` had `--section`; `groups` had no command at all, so a lab day
+  could only be hand-edited into `me.json` keyed by the course's numeric
+  `d2l_id` -- which nobody would guess. MCG2360's Thursday setting was
+  therefore never stored, `only_mine()` returned early on empty prefs, and
+  every Wednesday deadline stayed. Worse, `stale_sections()` checked
+  **sections only**, so the scrape reported nothing: this course has no
+  sections to be stale about. Two silent failures stacked behind one
+  visible symptom, which is why the same bug was reported three times.
+  `store.py --group MCG2360 thursday` sets it (abbreviations accepted,
+  `off` clears it), `store.py --me` prints every filter in force, and the
+  stale check now covers lab days and names which kind it means.
   `store.only_mine()` applies it, and the card list, the vault and
   `prep.py` all go through it — it was once inline in `cards()` and the other
   two showed all five sections. `gcal.py --prune` cleans up anything accepted
