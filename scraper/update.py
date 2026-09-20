@@ -178,9 +178,9 @@ def scrape(argv):
              db.execute("SELECT d2l_id, name FROM courses")}
     db.close()
 
-    for course, configured, actual in stale:
+    for course, what, configured, actual in stale:
         code = store.course_parts(names.get(course, course))["code"]
-        print(f"\n  ! {code}: me.json says you are in section {configured}, but its"
+        print(f"\n  ! {code}: me.json says your {what} is {configured}, but its"
               f"\n    deadlines name {', '.join(actual)}. Nothing is being hidden for"
               f"\n    this course until that is settled -- run  python mysection.py"
               f"\n    or edit me.json.")

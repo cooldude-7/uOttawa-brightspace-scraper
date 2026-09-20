@@ -142,7 +142,8 @@ class OtherPeoplesSectionsStayHidden(unittest.TestCase):
 
                 stale = store.stale_sections(rows)
                 self.assertEqual(len(stale), 1)
-                course, configured, actual = stale[0]
+                course, what, configured, actual = stale[0]
+                self.assertEqual(what, "section")
                 self.assertEqual(configured, "a4")
                 self.assertEqual(actual, ["c1", "c2", "c3"])
             finally:
@@ -1083,6 +1084,59 @@ class AbbreviatedDayGroups(unittest.TestCase):
                          "title": "Lab 1 report due (Wed group)"}]
                 kept = [r["title"] for r in store.only_mine(rows)]
                 self.assertEqual(kept, ["Lab 1 report due (Thu group)"])
+            finally:
+                store.PREFS_PATH = old
+
+
+
+class TheLabDayCanActuallyBeSet(unittest.TestCase):
+    """`groups` had no command. It could only be hand-edited into me.json,
+    keyed by the course's numeric d2l_id, so MCG2360's Thursday setting was
+    never stored -- and every Wednesday lab deadline stayed on the list.
+    Teaching the filter to read "(Thu group)" was necessary and not enough.
+    """
+
+    def _prefs(self, tmp, body):
+        path = Path(tmp) / "me.json"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_another_days_lab_deadline_is_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old, store.PREFS_PATH = store.PREFS_PATH, self._prefs(
+                tmp, '{"groups": {"604": "thursday"}}')
+            try:
+                rows = [{"course_d2l_id": 604, "title": t} for t in (
+                    "Lab 1 Report Submission (Thursday Groups)",
+                    "Lab 1 Report Submission (Wednesday Groups)",
+                    "Lab 1 report due (Thu group)",
+                    "Lab 1 report due (Wed group)",
+                    "Mid-term Exam")]
+                kept = [r["title"] for r in store.only_mine(rows)]
+                self.assertEqual(kept, [
+                    "Lab 1 Report Submission (Thursday Groups)",
+                    "Lab 1 report due (Thu group)",
+                    "Mid-term Exam"], "both spellings of Wednesday must go, "
+                                      "and a row naming no group must stay")
+            finally:
+                store.PREFS_PATH = old
+
+    def test_a_lab_day_naming_nothing_real_is_reported(self):
+        """Silence is what let this run for days. It has to be said out loud."""
+        with tempfile.TemporaryDirectory() as tmp:
+            old, store.PREFS_PATH = store.PREFS_PATH, self._prefs(
+                tmp, '{"groups": {"604": "saturday"}}')
+            try:
+                rows = [{"course_d2l_id": 604,
+                         "title": "Lab 1 report due (Thu group)"}]
+                stale = store.stale_sections(rows)
+                self.assertEqual(len(stale), 1)
+                _course, what, configured, actual = stale[0]
+                self.assertEqual(what, "lab day")
+                self.assertEqual(configured, "saturday")
+                self.assertEqual(actual, ["thursday"])
+                # and nothing is hidden while the setting is in doubt
+                self.assertEqual(len(store.only_mine(rows)), 1)
             finally:
                 store.PREFS_PATH = old
 

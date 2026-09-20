@@ -906,28 +906,40 @@ def only_mine(rows, course_key="course_d2l_id"):
 
 
 def stale_sections(rows, course_key="course_d2l_id"):
-    """Courses where me.json names a section that appears nowhere.
+    """Courses where me.json names a section or lab day that appears nowhere.
 
-    -> [(course_id, configured, [what the deadlines actually say])]. Reported
-    rather than guessed at: which section you are in is a fact about your
-    timetable, not something to infer from titles.
+    -> [(course_id, what, configured, [what the deadlines actually say])],
+    where `what` is "section" or "lab day". Reported rather than guessed at:
+    which section you are in is a fact about your timetable, not something
+    to infer from titles.
+
+    Lab days were not checked at all until MCG2360 showed why they must be.
+    The day group could only be hand-edited into me.json, so it was simply
+    never set, every Wednesday deadline stayed on a Thursday student's list,
+    and nothing anywhere said so -- the scrape reported stale *sections*
+    only, and this course has none.
     """
     prefs = load_prefs()
-    sections = prefs.get("sections", {})
-    if not sections:
+    wanted = {"section": prefs.get("sections") or {},
+              "lab day": prefs.get("groups") or {}}
+    if not any(wanted.values()):
         return []
 
-    found = {}
+    found = {"section": {}, "lab day": {}}
     for row in rows:
-        section, _ = audience(row["title"])
+        section, group = audience(row["title"])
+        course = str(row[course_key])
         if section:
-            found.setdefault(str(row[course_key]), set()).add(section.lower())
+            found["section"].setdefault(course, set()).add(section.lower())
+        if group:
+            found["lab day"].setdefault(course, set()).add(group.lower())
 
     out = []
-    for course, seen in found.items():
-        want = sections.get(course)
-        if want and not any(str(want).strip().lower() == s for s in seen):
-            out.append((course, want, sorted(seen)))
+    for what, config in wanted.items():
+        for course, seen in found[what].items():
+            want = config.get(course)
+            if want and not any(str(want).strip().lower() == s for s in seen):
+                out.append((course, what, want, sorted(seen)))
     return out
 
 
@@ -977,6 +989,68 @@ if __name__ == "__main__":
         print(f"  Written to {PREFS_PATH}.")
         print("  Other sections' deadlines will be hidden from now on.")
         print("  Run  python gcal.py --prune  to drop any already in your calendar.")
+        sys.exit(0)
+
+    # python store.py --group MCG2360 thursday
+    #
+    # There was no way to set this. `sections` had --section; `groups` could
+    # only ever be hand-edited into me.json, keyed by the course's numeric
+    # d2l_id, which nobody would guess. So MCG2360's Thursday setting was
+    # never actually stored and every Wednesday lab deadline stayed on the
+    # list -- the fix to read "(Thu group)" was necessary and not sufficient.
+    if "--group" in sys.argv:
+        i = sys.argv.index("--group")
+        try:
+            code, day = sys.argv[i + 1].upper(), sys.argv[i + 2].strip().lower()
+        except IndexError:
+            sys.exit("usage: python store.py --group MCG2360 thursday\n"
+                     "       python store.py --group MCG2360 off")
+        db = connect()
+        row = next((r for r in db.execute("SELECT d2l_id, name FROM courses")
+                    if course_parts(r["name"])["code"].upper() == code), None)
+        db.close()
+        if not row:
+            sys.exit(f"No course called {code}. Run update.py first.")
+        prefs = load_prefs()
+        if day in ("off", "none", "remove"):
+            if (prefs.get("groups") or {}).pop(str(row["d2l_id"]), None) is None:
+                sys.exit(f"  No lab-day group was set for {code}.")
+            save_prefs(prefs)
+            # print + exit(0): sys.exit("text") writes to stderr and exits 1,
+            # which is what a *failure* looks like to anything reading it.
+            print(f"  {code}: lab-day filter removed. Every group shown.")
+            sys.exit(0)
+        full = SHORT_DAYS.get(day, day)
+        if full not in GROUP_RE.pattern:
+            sys.exit(f"  '{day}' is not a weekday. Use monday..sunday.")
+        prefs.setdefault("groups", {})[str(row["d2l_id"])] = full
+        save_prefs(prefs)
+        print(f"  {code}: you are in the {full} lab group.")
+        print(f"  Written to {PREFS_PATH}.")
+        print("  Other days' lab deadlines will be hidden from now on.")
+        print("  Run  python gcal.py --prune  to drop any already in your calendar.")
+        sys.exit(0)
+
+    # python store.py --me
+    if "--me" in sys.argv:
+        prefs = load_prefs()
+        db = connect()
+        names = {str(r["d2l_id"]): course_parts(r["name"])["code"]
+                 for r in db.execute("SELECT d2l_id, name FROM courses")}
+        db.close()
+        print(f"\n  {PREFS_PATH}\n")
+        for label, key in (("section", "sections"), ("lab day", "groups")):
+            found = prefs.get(key) or {}
+            if not found:
+                print(f"  {label:<9} nothing set for any course")
+                continue
+            for cid, value in sorted(found.items()):
+                print(f"  {label:<9} {names.get(cid, '(course ' + cid + ')'):<9} {value}")
+        typos = prefs.get("year_typos") or {}
+        for code, rule in sorted(typos.items()):
+            print(f"  year typo {code:<9} {rule.get('wrong')} -> {rule.get('right')}")
+        print("\n  Anything not listed is unfiltered -- every section and every"
+              "\n  lab day is shown for that course.\n")
         sys.exit(0)
 
     # python store.py --year-typo MCG2130 2025 2026 "the prof mistyped it"
