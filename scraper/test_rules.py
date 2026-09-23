@@ -1308,5 +1308,52 @@ class ATaskWithOneCopyBelongsToEveryone(unittest.TestCase):
 
 
 
+class ADeadNetworkIsNotAnExpiredLogin(unittest.TestCase):
+    """The Pi kept its LAN, lost its uplink, and every scrape said this:
+
+        Brightspace session expired; renewing without a login...
+        Could not renew -- a full login is needed.
+        ... log in on your laptop and copy session.json across
+
+    None of which was true. `session_works()` catches every exception and
+    returns False, so a router failure and a dead session are the same
+    answer -- the cookie-name mistake one layer out. Following that message
+    means re-authenticating and copying a secret between machines to fix a
+    problem that is upstream of the router.
+    """
+
+    class _Down:
+        def get(self, url, **kw):
+            import httpx
+            raise httpx.ConnectError("[Errno -3] Temporary failure in name "
+                                     "resolution")
+
+    class _Up:
+        def get(self, url, **kw):
+            class R:
+                status_code = 302
+                headers = {"content-type": "text/html"}
+            return R()
+
+    @unittest.skipUnless(importlib.util.find_spec("httpx"),
+                         "needs httpx; runs on the Pi, where it is installed")
+    def test_no_network_is_reported_as_no_network(self):
+        import collect
+        ok, why = collect.reachable(self._Down())
+        self.assertFalse(ok)
+        self.assertIn("ConnectError", why)
+
+    @unittest.skipUnless(importlib.util.find_spec("httpx"),
+                         "needs httpx; runs on the Pi, where it is installed")
+    def test_any_http_answer_counts_as_reachable(self):
+        """A 302 or a 403 still proves the wire works. Whether we are allowed
+        in is session_works()'s question, not this one."""
+        import collect
+        ok, why = collect.reachable(self._Up())
+        self.assertTrue(ok)
+        self.assertIsNone(why)
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

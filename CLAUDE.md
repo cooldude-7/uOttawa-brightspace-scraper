@@ -647,6 +647,19 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   Pi will scrape once and then be stuck at the next expiry. One carrying the
   sign-on cookies is around 7 KB across several domains. Check the size before
   trusting it; the fix is to move it aside and log in again.
+- **No network looks exactly like an expired login.** `session_works()`
+  catches every exception and returns `False`, so `get_client()` printed
+  "Could not renew -- a full login is needed" and told the student to log in
+  on their laptop and copy `session.json` across. On 2026-09-23 the real
+  fault was the TP-Link's uplink: the Pi kept its LAN (ssh worked, the web
+  app had been up for two days) and lost the internet, so Tailscale went
+  offline, the phone could not reach the app, and every hourly scrape
+  blamed the login. Following that message means re-authenticating and
+  copying a secret between machines to fix a router. `collect.reachable()`
+  is checked before blaming the session, and any HTTP answer at all counts
+  -- a 403 or a redirect still proves the wire works; whether we are
+  allowed in is `session_works()`'s question. The same mistake as testing a
+  session by looking for a cookie name, one layer further out.
 - **Renewal has two entry points and only one of them works.** `/d2l/home` is
   where a browser lands once it already has a session; starting one goes
   through `/d2l/login`. And never test a session by looking for a cookie by

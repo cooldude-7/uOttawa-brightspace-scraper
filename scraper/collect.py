@@ -286,6 +286,28 @@ def session_works(client):
         return False
 
 
+def reachable(client):
+    """Can we get to Brightspace at all? -> (yes, why not).
+
+    `session_works()` swallows every exception, so a dead network and a dead
+    session are indistinguishable -- and the code concluded "a full login is
+    needed", which sent the student to re-login and copy session.json across
+    for a problem that was a router. It happened on 2026-09-23: the Pi kept
+    its LAN, lost its uplink, and every hourly scrape reported an expired
+    login. The same mistake as testing a session by looking for a cookie
+    name, one layer out.
+
+    Any HTTP answer at all counts as reachable, including a 403 or a
+    redirect: the question here is whether the network works, not whether
+    we are allowed in. That is `session_works()`'s job.
+    """
+    try:
+        client.get(BASE + "/d2l/login", follow_redirects=False, timeout=15)
+        return True, None
+    except Exception as e:
+        return False, f"{type(e).__name__}: {e}"
+
+
 def current_jar(client):
     """Whatever the client holds now, back in per-domain form."""
     jar = {}
@@ -312,6 +334,19 @@ def get_client():
             write_session(current_jar(client))
             print("Renewed.\n")
             return client
+        # Before blaming the session, check the wire. A student told to log
+        # in again and copy a file across, when the real fault is upstream of
+        # the router, has been sent to fix something that is not broken.
+        ok, why = reachable(client)
+        if not ok:
+            raise SystemExit(
+                "\nCannot reach Brightspace at all -- this is the network,"
+                "\nnot your login.\n\n"
+                f"    {why}\n\n"
+                "The saved session is probably fine. Check the connection"
+                "\n(`ping 1.1.1.1`); the next scrape will pick up by itself"
+                "\nonce it is back. Do NOT copy a new session.json across"
+                "\nuntil a scrape fails with the network working.\n")
         print("Could not renew -- a full login is needed.\n")
 
     jar = asyncio.run(browser_login())
