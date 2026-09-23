@@ -124,7 +124,7 @@ def line_for(row, today):
     return f"- [ ] **{when(row) or 'no date'}** — {row['title']}{left}{tail}"
 
 
-def bundle(dry=False):
+def bundle(dry=False, quiet=False):
     """One markdown file per course, holding everything about it.
 
     For dropping into a Claude Project as its knowledge. The vault is the
@@ -222,6 +222,9 @@ def bundle(dry=False):
             "folder under Settings → Files & Links → Excluded files.\n",
             encoding="utf-8")
     db.close()
+
+    if quiet:
+        return made
 
     print("\n  bundles for uploading into a Claude Project:")
     for path, words in made:

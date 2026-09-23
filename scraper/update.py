@@ -159,6 +159,16 @@ def scrape(argv):
         print("\n-- vault " + "-" * 51)
     try:
         vault.build()
+        # The bundles too, every time. They are the knowledge a Claude
+        # Project holds for a course, they cost nothing to write -- the
+        # database and collected.json, no API call -- and they only ever
+        # rotted because rebuilding them was a flag you had to remember.
+        # MCG2130's sat at "as of 08 September ... Deadlines: None
+        # recorded." for fifteen days while the course folder beside it
+        # updated every hour, so a project pointed at it was answering from
+        # a course with no deadlines in it. Re-uploading is still manual;
+        # being out of date no longer is.
+        vault.bundle(quiet=True)
         # Into the vault before it is pushed, so the one irreplaceable thing
         # here -- every decision, and the text_hash memory that keeps a
         # scrape free -- stops living only on one USB stick.

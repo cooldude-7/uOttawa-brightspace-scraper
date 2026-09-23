@@ -211,8 +211,18 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   a far better interface, works on both the user's devices, takes a photo of a
   whiteboard, and costs nothing beyond a subscription they already pay for,
   where every question through the API costs money. The bundle is the price of
-  that choice — it has to be re-run and re-uploaded when a course posts a lot
-  of new material.
+  that choice — it has to be re-uploaded when a course posts a lot of new
+  material.
+
+  **It used to have to be rebuilt by hand too, and so it rotted.** MCG2130's
+  bundle was built 8 September and still said "as of 08 September 2026 ...
+  Deadlines: _None recorded._" on the 23rd, while the course folder beside it
+  in the same repo updated every hour. A project pointed at it was answering
+  about a course with no deadlines in it -- eight assignments and a midterm
+  missing, and nothing about the file looked stale. `bundle()` costs nothing
+  (the database and `collected.json`, no API call), so `update.py` now writes
+  them on every scrape. Re-uploading is still manual, because Claude Projects
+  have no API; being out of date no longer is.
 - **prep.py** — runs a skill against one real item and writes the result into
   its note in `Work/`. How far it goes is decided by
   `Skills/course-policies.md`, not by code: GNG2101's professor permits AI
