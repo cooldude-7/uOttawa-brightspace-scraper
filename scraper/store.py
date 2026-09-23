@@ -533,6 +533,43 @@ def fingerprint(text):
 
 
 SECTION_RE = re.compile(r"\b([a-e])\s*(\d)\b")
+# A phrase anchored to the moment a document was shown, rather than to the
+# calendar. "Next week" on the last slide of a lecture deck is a real
+# instruction and a real event, but it is not a date: it means next week from
+# whenever that lecture happened, which nothing here records.
+RELATIVE_RE = re.compile(
+    r"\b(next|following|this)\s+(week|class|lecture|lab|session|time)\b", re.I)
+
+# Anything that looks like an actual calendar date -- a month name beside a
+# number, an ISO date, a numeric pair. If one of these is in the same sentence
+# then the sentence is not relative to nothing, whatever else it says.
+CALENDAR_RE = re.compile(
+    r"\d{4}-\d{2}-\d{2}"
+    r"|\b\d{1,2}\s*[/-]\s*\d{1,2}\b"
+    r"|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d{1,2}"
+    r"|\b\d{1,2}(st|nd|rd|th)?\s*(of\s+)?"
+    r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)", re.I)
+
+
+def relative_to_nothing(excerpt):
+    """Is this evidence a relative phrase with no calendar date beside it?
+
+    "Next week- client meet 2" is. It produced three dated rows in GNG2101,
+    guessed from the run's own calendar, two of which reached Google
+    Calendar -- one of them putting client meeting 2 two days after meeting
+    1. "2 (Sep 20-26th) MakerLab Client Meet 1" is not, and is the row that
+    turned out to be right.
+
+    Deliberately narrow. A false positive here costs a date and keeps the
+    item; matching "week 7" or "the Friday after reading week" would cost
+    dates the prompt is right to resolve, so those are left alone.
+    """
+    text = (excerpt or "").strip()
+    if not text:
+        return False
+    return bool(RELATIVE_RE.search(text)) and not CALENDAR_RE.search(text)
+
+
 GROUP_RE = re.compile(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b")
 
 # The same professor writes both "(Thursday Groups)" and "(Thu group)". Only

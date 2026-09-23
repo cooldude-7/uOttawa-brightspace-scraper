@@ -156,6 +156,7 @@ python posted_work.py      documents that ARE work; --store to keep them
 python probe_year.py       check a year-typo correction lands on the right weekday
 python probe_attachments.py GNG2101   files hanging off tabs we never download
 python supersede.py        stored dates Brightspace has replaced; --apply retires them
+python reschedule.py       one schedule replaced another; --apply retires the old rows
 python store.py --year-typo MCG2130 off          retire a correction once the prof fixes it
 python store.py --forget-read   un-mark documents a failed run marked as read
 python test_rules.py       the rules that must never break (no deps, ~0.1s)
@@ -374,6 +375,57 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   always looks like a twin; and rows are marked `resolved` like a merge, so
   `--restore` brings them back. Retire the rule itself with
   `store.py --year-typo CODE off`.
+- **A second document can replace a schedule, wording every row
+  differently.** MCG2360's labs moved three weeks: the syllabus put Lab 1 on
+  23/24 Sep, and the lab prep slideshow read a week later says
+  "- Lab 1: OCT 14, OCT 15". The whole sequence slid by one slot, so the
+  slideshow's Lab 1 falls on the syllabus's Lab 2 dates. `supersede.py`
+  cannot touch this -- Brightspace publishes neither set, and the two
+  documents share not one title, so nothing automatic can see that "Lab 1
+  session (Thu group)" is the same event as "Lab 1: Tensile Test (Thursday
+  Group)". Which of two documents is current is a judgement about a course,
+  so it is written down in `scraper/corrections.txt` in plain English, one
+  line per pair, and `reschedule.py` applies it. Same safety as
+  `supersede.py`: **nothing is retired unless the replacement is already on
+  file with a date**, so the worst a wrong line can do is nothing.
+
+  Three mistakes it made against the real database first, all of them the
+  kind that hides work:
+  - Matching by substring made "Lab 1 session" find "Upload WHMIS
+    certificate prior to Lab 1 session" and offer a certificate reminder as
+    the replacement for a lab. A title that merely *refers* to an event is
+    not that event: matching is anchored at the start, prefixes allowed only
+    because one document says "Lab 4: Precipitation Hardening" and the next
+    says "...of Aluminium Alloys".
+  - A fragment naming no day matches every day, so the Thursday lab paired
+    with the Wednesday replacement. Retire and keep must have the **same
+    audience**.
+  - Asking `only_mine()` about one row at a time always answers yes: it
+    stops filtering a course whose rows name no group resembling the one on
+    file, and a single Wednesday row *is* such a course. Filter the whole
+    set once and keep the surviving ids. Otherwise another group's
+    replacement gets accepted and their labs reach Google Calendar.
+
+  A lab with no replacement is left alone and named. MCG2360's Lab 4 session
+  is the case: the slideshow gives its report (16/17 Dec) and no session, so
+  the syllabus's 18/19 Nov still stands there. By the pattern it would be
+  2/3 Dec -- and a guess is not a source.
+- **"Next week" is not a date, and it looked exactly like one.** Three
+  GNG2101 lecture decks end on "Next week- client meet 1" / "client meet 2".
+  The prompt asks for relative dates to be resolved ("the Friday after
+  reading week"), which is right -- but that phrase is anchored to the term,
+  and "next week" is anchored to the lecture the slide was shown in, which
+  nothing here records. The model resolved them against the run's own
+  calendar and produced 14 Sep, 15 Sep and 24 Sep. All three were accepted
+  and two reached Google Calendar, one of them putting **client meeting 2
+  two days after meeting 1**. The real schedule is a week table in the
+  `Labs` document -- "2 (Sep 20-26th) MakerLab Client Meet 1", Client Meet 2
+  in week 4 -- and the student's own experience confirmed it, not any test.
+  `store.relative_to_nothing()` is the guard and `find_dates` drops the date
+  but **keeps the row**, stored `pending`: the meeting is real, its date was
+  never stated. Deliberately narrow -- a calendar date anywhere in the same
+  sentence settles it, and "week 7" is left alone, because a false positive
+  here costs a date the extractor was right to work out.
 - **Don't build a column that looks like data and isn't.** The first version
   of `probe_year.py` printed a "was" column by swapping the corrected year
   back -- a reconstruction, not anything read from the database. It implied
@@ -521,6 +573,16 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   The rest of the pipeline behaved correctly under the same failure: each
   document's error was caught individually, so the vault still built, the
   database still backed up and the push still happened.
+- **A try/except that keeps a scrape alive also hides a plain bug.**
+  `update.py` wraps `link_tasks` and `posted_work` so a failure there cannot
+  sink a scrape -- deadlines are the product. Then `posted_work.load()` grew
+  a third return value and the call site still unpacked two: every scrape
+  printed one quiet line, `could not check for undated work: too many values
+  to unpack (expected 2)`, and **posted_work ran on no scrape at all**. No
+  error, nothing missing, tutorial sheets simply stopped arriving. A runtime
+  hazard and a wrong call signature are not the same thing and must not look
+  the same. `test_rules.py` now reads `update.py` and compares what it
+  unpacks against what the function returns, without running either.
 - **"Not authorised yet" was five different problems wearing one face.**
   `gcal.service()` returned `None` whether `google_token.json` was absent,
   unreadable, missing a scope, expired without a refresh token, or refused
@@ -674,7 +736,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Sixteen tests, standard library only, a tenth of a second. They are not
+Seventy-two tests, standard library only, a quarter of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another

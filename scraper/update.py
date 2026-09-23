@@ -137,10 +137,15 @@ def scrape(argv):
         # unanchorable, so link_tasks never pays to consider them.
         try:
             db = store.connect()
-            added, names = posted_work.load(db)
+            # Three values, not two. `promoted` counts rows an earlier run
+            # left queued in the cards and this one adopts into the To-do
+            # tab -- unpacking only two swallowed the whole check behind the
+            # except below, and posted_work then ran on no scrape at all
+            # without anything failing visibly.
+            added, promoted, names = posted_work.load(db)
             db.commit()
             db.close()
-            if added:
+            if added or promoted:
                 print(f"\n-- work with no deadline " + "-" * 35)
                 for code, title in names:
                     print(f"  {code:<9} {title[:52]}")

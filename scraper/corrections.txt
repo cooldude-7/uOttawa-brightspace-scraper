@@ -1,0 +1,74 @@
+# One schedule replaced another, and the titles do not match.
+#
+# supersede.py handles the easy case: Brightspace itself now publishes a
+# different date for the same title. This file is for the other case -- a
+# professor re-issues a schedule in a second document, wording every row
+# differently, so nothing automatic can tell that "Lab 1 session (Thu group)"
+# is the same event as "Lab 1: Tensile Test (Thursday Group)".
+#
+# Each line names a piece of work twice: the row to retire, and the row that
+# replaces it.
+#
+#     COURSE | title to retire | title that replaces it
+#
+# Both are matched loosely against stored titles, ignoring case, punctuation
+# and anything in brackets. A line that matches nothing is printed and
+# skipped -- it is never an error, because a professor can revise again.
+#
+# NOTHING IS RETIRED UNLESS THE REPLACEMENT IS ALREADY ON FILE WITH A DATE.
+# That is the whole safety of this file: the worst a wrong line can do is
+# nothing. It cannot leave you with no deadline where you had one.
+#
+# Retired rows are marked `resolved`, exactly like a merge, so
+# `python store.py --restore` brings every one of them back.
+#
+#     python reschedule.py            show what would change
+#     python reschedule.py --apply    change it
+#     python gcal.py --tidy           then clear the calendar events left behind
+
+# ---------------------------------------------------------------------------
+# MCG2360 -- the labs moved three weeks later.
+#
+# The syllabus (MCG2360_Syllabus_Fall_2026, read 7 Sep) put Lab 1 on
+# Sep 23/24. The lab prep slideshow (MCG 2360A - Lab Prep Session (F2026),
+# read 17 Sep) says "- Lab 1: OCT 14, OCT 15". Luca confirmed the slideshow
+# is the current one.
+#
+# The whole sequence slid by one slot: the slideshow's Lab 1 falls on the
+# syllabus's Lab 2 dates, Lab 2 on old Lab 3, Lab 3 on old Lab 4. So every
+# accepted syllabus row is one lab too early, and the wrong ones are the
+# ones already in Google Calendar.
+# ---------------------------------------------------------------------------
+
+MCG2360 | Lab 1: Tensile Test                  | Lab 1 session
+MCG2360 | Lab 2: Impact Testing                | Lab 2 session
+MCG2360 | Lab 3: Mechanical Properties of Steels | Lab 3 session
+
+MCG2360 | Lab 1 Report Submission | Lab 1 report due
+MCG2360 | Lab 2 Report Submission | Lab 2 report due
+MCG2360 | Lab 3 Report Submission | Lab 3 report due
+MCG2360 | Lab 4 Report Submission | Lab 4 report due
+
+# Lab 4's session date is deliberately absent. The slideshow gives its
+# report (Dec 16/17) but no session, so there is nothing to replace the
+# syllabus's Nov 18/19 with. By the pattern it would be Dec 2/3, but a
+# guess is not a source. "Lab 4: Precipitation Hardening" is therefore
+# left alone, still carrying the old date, and it needs checking against
+# the deck by eye.
+
+# ---------------------------------------------------------------------------
+# GNG2101 -- "next week" became a date, three times.
+#
+# Three lecture decks end on "Next week- client meet 1" / "client meet 2".
+# There is no date in that sentence at all; the extractor guessed one from
+# the run's own calendar and stored it `confidence: low`. All three were
+# accepted, so two dates landed in Google Calendar that no document states.
+#
+# The real schedule is a week table in the Labs document, and Luca's own
+# experience confirms it: Client Meet 1 happened Tue 22 Sep, inside
+# "2 (Sep 20-26th) MakerLab Client Meet 1". Client Meet 2 is week 4,
+# Oct 4-10 -- not Sep 24, which is two days after meeting 1.
+# ---------------------------------------------------------------------------
+
+GNG2101 | Client meet 1 | Lab Week 2: Client Meet 1
+GNG2101 | Client Meet 2 | Lab Week 4: Client Meet 2

@@ -1354,6 +1354,253 @@ class ADeadNetworkIsNotAnExpiredLogin(unittest.TestCase):
         self.assertIsNone(why)
 
 
+class WrappedCallsMatchTheirFunctions(unittest.TestCase):
+    """update.py wraps link_tasks and posted_work in try/except so a failure
+    there cannot sink a scrape -- deadlines are the product. The cost is that
+    a plain programming error looks identical to a runtime hazard: when
+    posted_work.load() grew a third return value and update.py still unpacked
+    two, the TypeError was printed as one quiet line and posted_work then ran
+    on no scrape at all. Nothing failed, nothing was missing, and tutorial
+    sheets simply stopped arriving.
+
+    So the call sites are checked for arity without running them: read
+    update.py, find what it unpacks, and compare against what the function
+    really returns.
+    """
+
+    def unpack_count(self, module, func):
+        """How many names does update.py bind from `module.func(...)`?"""
+        import ast
+        tree = ast.parse(Path("update.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assign):
+                continue
+            call = node.value
+            if not isinstance(call, ast.Call):
+                continue
+            f = call.func
+            if (isinstance(f, ast.Attribute) and f.attr == func
+                    and isinstance(f.value, ast.Name) and f.value.id == module):
+                target = node.targets[0]
+                return len(target.elts) if isinstance(target, ast.Tuple) else 1
+        self.fail(f"update.py never calls {module}.{func}()")
+
+    def returns_count(self, module, func):
+        """How many values does that function's return statement carry?"""
+        import ast
+        tree = ast.parse(Path(f"{module}.py").read_text(encoding="utf-8"))
+        counts = set()
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.FunctionDef) and node.name == func):
+                continue
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Return) and inner.value is not None:
+                    counts.add(len(inner.value.elts)
+                               if isinstance(inner.value, ast.Tuple) else 1)
+        self.assertTrue(counts, f"{module}.{func}() returns nothing")
+        self.assertEqual(len(counts), 1,
+                         f"{module}.{func}() returns different shapes: {counts}")
+        return counts.pop()
+
+    def test_posted_work_load(self):
+        self.assertEqual(self.unpack_count("posted_work", "load"),
+                         self.returns_count("posted_work", "load"))
+
+class NextWeekIsNotADate(unittest.TestCase):
+    """Three GNG2101 decks end on "Next week- client meet 1" / "client meet 2".
+
+    The model resolved those against the run's own calendar and produced
+    Sep 14, Sep 15 and Sep 24. All three were accepted and two reached Google
+    Calendar -- one of them putting client meeting 2 two days after meeting 1,
+    when the real week table puts them three weeks apart. Nothing in the row
+    looked wrong; only the excerpt gave it away, and the excerpt is there to
+    be checked.
+
+    Every string below is one really stored in the database.
+    """
+
+    def test_a_relative_phrase_alone_is_not_evidence_of_a_date(self):
+        for excerpt in ("Next week- client meet 2",
+                        "Next week- client meet 1",
+                        "Submit before the following lab",
+                        "next class we cover diffusion"):
+            self.assertTrue(store.relative_to_nothing(excerpt), excerpt)
+
+    def test_a_calendar_date_in_the_same_sentence_settles_it(self):
+        """These are the rows that turned out to be right. Blanking one of
+        these would cost a real date -- the direction that loses marks."""
+        for excerpt in ("2 (Sep 20-26th) MakerLab Client Meet 1",
+                        "Housekeeping - Week of Sep. 21st ... Client Meet 1",
+                        "Lab 1  October 7, 2026  October 8, 2026",
+                        "Due: Sept 18th (Friday) at 11:00 PM",
+                        "- Lab 1: OCT 14, OCT 15",
+                        "Due 2026-10-01"):
+            self.assertFalse(store.relative_to_nothing(excerpt), excerpt)
+
+    def test_the_relative_dates_the_prompt_should_resolve_are_left_alone(self):
+        """"The Friday after reading week" is anchored to the term, not to a
+        lecture. Widening this rule to catch it would cost dates the extractor
+        is right to work out."""
+        for excerpt in ("the Friday after reading week",
+                        "Quiz 1 will be in week 7",
+                        "Assignments are due weekly", "", None):
+            self.assertFalse(store.relative_to_nothing(excerpt), repr(excerpt))
+
+
+MCG = "MCG2360  A00  Engineering Materials I [ LEC ] 20269"
+
+
+class OneScheduleReplacesAnother(unittest.TestCase):
+    """MCG2360's labs moved three weeks and the two documents share no title.
+
+    reschedule.py retires the old rows in favour of the new ones, from pairs
+    written out in corrections.txt. Every guard below is a mistake the first
+    version of it actually made against the real database.
+    """
+
+    def table(self, tmp, *lines):
+        path = Path(tmp) / "corrections.txt"
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    def test_a_row_that_merely_mentions_the_event_is_not_the_event(self):
+        """"Lab 1 session" matched "Upload WHMIS certificate prior to Lab 1
+        session" and offered the certificate reminder as the replacement for
+        the lab -- which would have retired the lab and kept the reminder.
+
+        No day group on either row on purpose: with one, the audience check
+        would refuse the pair and this would pass whether or not the match
+        is anchored. Here only the anchoring can save it.
+        """
+        import reschedule
+        db = fresh_db()
+        cid = add_course(db, 2, MCG)
+        add_date(db, cid, "Lab 1: Tensile Test", "2026-09-24", status="accepted")
+        add_date(db, cid, "Upload WHMIS certificate prior to Lab 1 session",
+                 "2026-10-14")
+        db.commit()
+        with tempfile.TemporaryDirectory() as tmp:
+            moves, skipped, _ = reschedule.plan(
+                db, table=self.table(tmp, "MCG2360 | Lab 1: Tensile Test | Lab 1 session"))
+        self.assertEqual(moves, [], "the lab would have been retired for a reminder")
+        self.assertTrue(skipped, "and it has to say so, not go quiet")
+
+    def test_a_longer_wording_of_the_same_event_still_matches(self):
+        """Anchoring must not become exact-match-only: one document writes
+        "Lab 4: Precipitation Hardening" and the next "Lab 4: Precipitation
+        Hardening of Aluminium Alloys"."""
+        import reschedule
+        db = fresh_db()
+        cid = add_course(db, 2, MCG)
+        add_date(db, cid, "Lab 4: Precipitation Hardening of Aluminium Alloys",
+                 "2026-11-19", status="accepted")
+        add_date(db, cid, "Lab 4 session", "2026-12-03")
+        db.commit()
+        with tempfile.TemporaryDirectory() as tmp:
+            moves, _, _ = reschedule.plan(
+                db, table=self.table(
+                    tmp, "MCG2360 | Lab 4: Precipitation Hardening | Lab 4 session"))
+        self.assertEqual(len(moves), 1)
+
+    def test_a_thursday_row_is_never_retired_for_a_wednesday_date(self):
+        """A fragment naming no day matches every day, so the Thursday lab
+        paired with the Wednesday replacement -- somebody else's date."""
+        import reschedule
+        db = fresh_db()
+        cid = add_course(db, 2, MCG)
+        add_date(db, cid, "Lab 2: Impact Testing (Thursday Group)", "2026-10-15",
+                 status="accepted")
+        add_date(db, cid, "Lab 2 session (Wed group)", "2026-11-04")
+        db.commit()
+        with tempfile.TemporaryDirectory() as tmp:
+            moves, skipped, _ = reschedule.plan(
+                db, table=self.table(tmp, "MCG2360 | Lab 2: Impact Testing | Lab 2 session"))
+        self.assertEqual(moves, [])
+        self.assertIn("thursday", " ".join(w for _, w in skipped))
+
+    def test_the_matching_group_is_found_and_retired(self):
+        """The same case with the Thursday replacement present must work,
+        or the guard above is just a way of doing nothing."""
+        import reschedule
+        db = fresh_db()
+        cid = add_course(db, 2, MCG)
+        add_date(db, cid, "Lab 2: Impact Testing (Thursday Group)", "2026-10-15",
+                 status="accepted")
+        add_date(db, cid, "Lab 2 session (Wed group)", "2026-11-04")
+        add_date(db, cid, "Lab 2 session (Thu group)", "2026-11-05")
+        db.commit()
+        with tempfile.TemporaryDirectory() as tmp:
+            moves, skipped, mine = reschedule.plan(
+                db, table=self.table(tmp, "MCG2360 | Lab 2: Impact Testing | Lab 2 session"))
+            self.assertEqual(len(moves), 1)
+            self.assertIn("Thu group", moves[0][1]["title"])
+            reschedule.apply(db, moves, mine)
+        after = {r["title"]: r["status"] for r in db.execute(
+            "SELECT title, status FROM dates")}
+        self.assertEqual(after["Lab 2: Impact Testing (Thursday Group)"], "resolved")
+        self.assertEqual(after["Lab 2 session (Thu group)"], "accepted")
+
+    def test_nothing_is_retired_without_a_dated_replacement_on_file(self):
+        """The whole safety of the file: the worst a wrong line can do is
+        nothing. It can never leave you with no deadline where you had one."""
+        import reschedule
+        db = fresh_db()
+        cid = add_course(db, 2, MCG)
+        add_date(db, cid, "Lab 4 Report Submission (Thursday Groups)", "2026-12-03",
+                 status="accepted")
+        add_date(db, cid, "Lab 4 report due (Thu group)", None)   # named, no date
+        db.commit()
+        with tempfile.TemporaryDirectory() as tmp:
+            moves, skipped, _ = reschedule.plan(
+                db, table=self.table(
+                    tmp, "MCG2360 | Lab 4 Report Submission | Lab 4 report due"))
+        self.assertEqual(moves, [])
+        self.assertIn("no dated row", " ".join(w for _, w in skipped))
+
+    def test_a_linked_todo_is_never_retired(self):
+        """It borrows its anchor's date, so it looks like a twin of whatever
+        it hangs off -- the same reason supersede.py skips them."""
+        import reschedule
+        db = fresh_db()
+        cid = add_course(db, 2, MCG)
+        add_date(db, cid, "Lab 1 session (Thu group)", "2026-10-15")
+        add_date(db, cid, "Lab 1: Tensile Test (Thursday Group)", "2026-09-24",
+                 status="accepted", linked="Lab 1 prep (Thursday Group)")
+        db.commit()
+        with tempfile.TemporaryDirectory() as tmp:
+            moves, _, _ = reschedule.plan(
+                db, table=self.table(tmp, "MCG2360 | Lab 1: Tensile Test | Lab 1 session"))
+        self.assertEqual(moves, [])
+
+    def test_a_dismissed_replacement_stays_dismissed(self):
+        """Nothing here may undo a decision the student made."""
+        import reschedule
+        db = fresh_db()
+        cid = add_course(db, 2, MCG)
+        add_date(db, cid, "Lab 3: Mechanical Properties (Thursday Group)",
+                 "2026-11-05", status="accepted")
+        add_date(db, cid, "Lab 3 session (Thu group)", "2026-11-19",
+                 status="dismissed")
+        db.commit()
+        with tempfile.TemporaryDirectory() as tmp:
+            moves, skipped, mine = reschedule.plan(
+                db, table=self.table(
+                    tmp, "MCG2360 | Lab 3: Mechanical Properties | Lab 3 session"))
+            reschedule.apply(db, moves, mine)
+        self.assertEqual(db.execute(
+            "SELECT status FROM dates WHERE title LIKE 'Lab 3 session%'"
+        ).fetchone()["status"], "dismissed")
+
+    def test_the_shipped_corrections_file_parses(self):
+        """A typo in the table is silent otherwise -- it simply does nothing."""
+        import reschedule
+        rows = reschedule.pairs()
+        self.assertTrue(rows, "corrections.txt parsed to no pairs at all")
+        for code, old, new, line in rows:
+            self.assertRegex(code, r"^[A-Z]{3}\d{4}$", f"line {line}")
+            self.assertNotEqual(store.normalize(old), store.normalize(new),
+                                f"line {line} replaces a row with itself")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

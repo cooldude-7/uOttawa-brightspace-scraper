@@ -85,6 +85,10 @@ breakdown. Read all of it, not just headings.
 - For a relative date like "the Friday after reading week" or "week 7", resolve it \
 to a real calendar date if you reasonably can, and mark confidence "low". Put the \
 original wording in source_excerpt.
+- BUT a phrase relative to when the document was shown -- "next week", "next class", \
+"the following lab" -- is NOT a date, because you do not know when it was shown. \
+Report the item with date "" so it is listed as not yet scheduled. Do not count \
+forward from today.
 - Use YYYY-MM-DD for date. If the year is not stated, infer it from the term.
 - Use 24-hour HH:MM for time, or "" if no time is given.
 - source_excerpt must be the actual sentence or table row the date came from, \
@@ -253,6 +257,27 @@ def ask(client, model, course, doc, text, window=(None, None)):
         parts = when.split("-")
         if len(parts) == 3 and "00" in parts[1:]:
             print(f"    dropped invented date {when} ({d.get('title','')[:40]})")
+            continue
+
+        # "Next week" is relative to the lecture the slide was shown in, and
+        # nothing here knows when that was. Three GNG2101 decks end on
+        # "Next week- client meet 1" / "client meet 2"; the model resolved
+        # them against the run's own calendar and produced Sep 14, Sep 15 and
+        # Sep 24 -- all three accepted, two of them into Google Calendar, for
+        # meetings the real schedule puts on Sep 20-26 and Oct 4-10. It even
+        # put client meeting 2 two days after meeting 1.
+        #
+        # The date is dropped, not the row: the meeting is real, so it is
+        # stored `pending` -- named but not scheduled -- which is exactly what
+        # is true about it. "The Friday after reading week" is untouched,
+        # because the prompt does ask for that to be resolved and it is
+        # anchored to the term, not to a lecture.
+        if store.relative_to_nothing(d.get("source_excerpt")):
+            print(f"    {when} -> no date ({d.get('title','')[:34]}) -- "
+                  f'"next week" is relative to a lecture we cannot date')
+            d["date"], d["time"] = None, None
+            d["pending"] = d.get("kind") != "todo"
+            kept.append(d)
             continue
 
         # A year the professor mistyped -- declared per course in me.json,
