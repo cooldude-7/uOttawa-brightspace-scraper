@@ -46,9 +46,26 @@ def main():
         # BaseException, not Exception: collect.get_client() raises SystemExit
         # when a full login is needed, and that is precisely the failure most
         # worth recording rather than letting exit silently.
+        # What the exception says is what the code at the point of failure
+        # believed, and that has been wrong every time it mattered: a dead
+        # router raised "a full login is needed", which sends someone to
+        # copy a bearer token between machines to fix a router. doctor.py
+        # checks the layers in order -- stick, network, session, key -- so
+        # its verdict is the first thing genuinely broken rather than the
+        # first thing to notice. It is what the app's banner shows, so it
+        # is worth the few seconds it costs on a run that already failed.
+        why = f"{type(e).__name__}: {e}"
+        try:
+            import doctor
+            told = doctor.verdict(doctor.diagnose())
+            if told:
+                why = told
+        except Exception as inner:
+            # A broken doctor must never replace a real error with its own.
+            why = f"{why}  (doctor failed too: {type(inner).__name__})"
+
         db = store.connect()
-        store.finish_run(db, run_id, 0, 0, 0, 0,
-                         error=f"{type(e).__name__}: {e}"[:400])
+        store.finish_run(db, run_id, 0, 0, 0, 0, error=why[:400])
         db.commit()
         db.close()
         raise

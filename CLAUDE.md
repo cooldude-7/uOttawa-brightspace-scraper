@@ -159,6 +159,7 @@ python supersede.py        stored dates Brightspace has replaced; --apply retire
 python reschedule.py       one schedule replaced another; --apply retires the old rows
 python store.py --year-typo MCG2130 off          retire a correction once the prof fixes it
 python store.py --forget-read   un-mark documents a failed run marked as read
+python doctor.py          what is actually broken, checked in order
 python test_rules.py       the rules that must never break (no deps, ~0.1s)
 python backup.py           dump the database into the vault
 python backup.py --restore rebuild a database from that dump
@@ -737,6 +738,31 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   through `/d2l/login`. And never test a session by looking for a cookie by
   name — expired and fresh are indistinguishable that way. Both mistakes were
   made here and both looked exactly like an expired login in the logs.
+- **Every failure here has worn another failure's face, so the checks run
+  in order.** A dead router raised "a full login is needed"; a dead cookie
+  reported success; five separate Google problems all said "not authorised
+  yet". Each time the message sent someone to do the wrong thing, and twice
+  that wrong thing was copying `session.json` between machines -- a bearer
+  token for a whole university account -- to fix a router. A better message
+  at the point of failure cannot solve this, because the code there does
+  not know enough: `session_works()` genuinely cannot tell a dead session
+  from a dead wire.
+
+  `doctor.py` checks the layers **in order** -- stick, network, Brightspace
+  session, AI key, calendar, freshness -- and reports the first one
+  genuinely broken, skipping the rest because a full disk makes everything
+  after it fail too. The order is the whole design, not a presentation
+  choice: "your Brightspace login expired" is sound advice after
+  `reachable()` says the wire works and dangerous nonsense before it.
+  `test_rules.py` asserts the order and that a dead network's verdict never
+  contains the words `session.json` or `log in`.
+
+  `update.py` runs it when a scrape fails and stores its verdict as the
+  run's `error`, so the app's banner shows the first real problem rather
+  than whatever the exception believed. It costs no API money. Reach for
+  `probe_session.py` after this, not before -- it prints the renewal chain
+  hop by hop, which is the next question once the doctor says the login is
+  the problem.
 - **Secrets stay out of git**: `api_key.txt`, `google_client.json`,
   `google_token.json`, `session.json`. The session file now holds sign-on
   cookies — a bearer token for the whole uOttawa account. Treat it seriously,
@@ -746,7 +772,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Seventy-two tests, standard library only, a quarter of a second. They are not
+Seventy-six tests, standard library only, a quarter of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another

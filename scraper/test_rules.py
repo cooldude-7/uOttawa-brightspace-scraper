@@ -1601,6 +1601,60 @@ class OneScheduleReplacesAnother(unittest.TestCase):
             self.assertNotEqual(store.normalize(old), store.normalize(new),
                                 f"line {line} replaces a row with itself")
 
+class TheDoctorChecksInOrder(unittest.TestCase):
+    """Every failure in this project has worn another failure's face.
+
+    A dead router raised "a full login is needed", which sends someone to
+    copy a bearer token for their whole university account between two
+    machines in order to fix a router. doctor.py exists to stop that, and
+    it only works because of the ORDER: a session cannot be judged until
+    the network is known good. These tests are that order.
+    """
+
+    def test_a_dead_network_never_produces_login_advice(self):
+        """The exact wrong turn this tool was built to prevent."""
+        import doctor
+        r = doctor.Report()
+        r.add("network", doctor.BAD, "cannot reach Brightspace -- ConnectError",
+              "The Pi has no internet. It is almost always the router.")
+        said = doctor.verdict(r).lower()
+        self.assertIn("internet", said)
+        for wrong in ("session.json", "log in", "login is needed"):
+            self.assertNotIn(wrong, said,
+                             f"a dead network told the student to {wrong!r}")
+
+    def test_the_first_break_wins_and_the_rest_are_skipped(self):
+        """A full stick makes everything after it fail too. Reporting all of
+        them buries the one that is actually wrong."""
+        import doctor
+        r = doctor.Report()
+        r.add("data disk", doctor.BAD, "only 0.10 GB free", "The stick is full.")
+        self.assertTrue(r.stopped())
+        r.add("network", doctor.BAD, "cannot reach Brightspace", "Check the router.")
+        self.assertIn("0.10 GB", doctor.verdict(r))
+        self.assertNotIn("router", doctor.verdict(r))
+
+    def test_every_check_runs_in_the_documented_order(self):
+        """Reordering these silently re-introduces the original bug, and
+        nothing else in the suite would notice."""
+        import doctor
+        names = [n for n, _ in [
+            ("data disk", None), ("network", None), ("Brightspace login", None),
+            ("AI key", None), ("Google Calendar", None), ("last good scrape", None)]]
+        source = Path("doctor.py").read_text(encoding="utf-8")
+        order = source.split("order = [")[1].split("]")[0]
+        found = [n for n in names if f'"{n}"' in order]
+        self.assertEqual(found, names, "the checks are no longer in order")
+        self.assertLess(order.index('"network"'), order.index('"Brightspace login"'),
+                        "the session must never be judged before the network")
+
+    def test_a_clean_run_has_no_verdict(self):
+        """Nothing wrong must produce no banner at all, not an empty one."""
+        import doctor
+        r = doctor.Report()
+        r.add("data disk", doctor.OK, "231 GB free")
+        self.assertIsNone(doctor.verdict(r))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
