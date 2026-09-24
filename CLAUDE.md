@@ -134,8 +134,9 @@ Not built yet:
 - **Push notifications.** Nothing tells you a deadline appeared; you have to
   open the app. Web push needs a secure context — worth testing whether
   Tailscale's `*.ts.net` certificates satisfy that before buying a domain.
-- **An off-Pi dead-man's switch.** The heartbeat above cannot report a Pi that
-  is fully dead. Something outside the Pi would have to notice the silence.
+- **Nothing yet knows about a new deadline itself** -- see push
+  notifications above. The failure side is covered (`notify.py`); the
+  "something is due" side is not.
 
 ## Commands
 
@@ -160,6 +161,8 @@ python reschedule.py       one schedule replaced another; --apply retires the ol
 python store.py --year-typo MCG2130 off          retire a correction once the prof fixes it
 python store.py --forget-read   un-mark documents a failed run marked as read
 python doctor.py          what is actually broken, checked in order
+python notify.py --status  is anything set up to tell you when it breaks
+python notify.py --test    send yourself a test message
 python test_rules.py       the rules that must never break (no deps, ~0.1s)
 python backup.py           dump the database into the vault
 python backup.py --restore rebuild a database from that dump
@@ -763,8 +766,33 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   `probe_session.py` after this, not before -- it prints the renewal chain
   hop by hop, which is the next question once the doctor says the login is
   the problem.
+- **A machine cannot report its own silence.** The heartbeat in the `runs`
+  table catches a failing scrape *while the Pi is alive*, and the app's
+  banner shows it -- but a Pi that is off, or one that has lost its uplink,
+  serves no page and sends no alert. That is not a gap in the code, it is
+  the shape of the problem: the machine that would tell you is the machine
+  that is broken. On 2026-09-23 the Pi kept its LAN and lost the internet
+  for three days and nothing said a word; the student found out by opening
+  the app.
+
+  So `notify.py` does two different things on purpose. A **push** sends the
+  doctor's verdict when a scrape fails -- useful only while the Pi can
+  speak. A **heartbeat** is a bare request after every good scrape to a
+  service outside the house, which emails when they stop arriving; silence
+  is the signal, and it is the only half that survives the Pi being dead.
+  Building only the push would have missed the outage that prompted it.
+
+  Both are one URL in one file and do nothing until the file exists, so
+  the code ships inert. `urllib`, not `httpx`: this runs inside the failure
+  path of a scrape, and something reporting a broken scrape must not be
+  able to break one further -- every call swallows everything and returns
+  whether it worked. One push per *distinct* verdict, because the timer
+  runs fourteen times a day and fourteen identical alerts is a notification
+  you learn to swipe away.
 - **Secrets stay out of git**: `api_key.txt`, `google_client.json`,
-  `google_token.json`, `session.json`. The session file now holds sign-on
+  `google_token.json`, `session.json`, `notify.txt`, `heartbeat.txt` -- the
+  last two are URLs, and anyone holding one can message you or fake your
+  heartbeat. The session file now holds sign-on
   cookies — a bearer token for the whole uOttawa account. Treat it seriously,
   especially once it lives on the Pi.
 
@@ -772,7 +800,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Seventy-six tests, standard library only, a quarter of a second. They are not
+Eighty-two tests, standard library only, a third of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another

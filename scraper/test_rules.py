@@ -1655,6 +1655,69 @@ class TheDoctorChecksInOrder(unittest.TestCase):
         r.add("data disk", doctor.OK, "231 GB free")
         self.assertIsNone(doctor.verdict(r))
 
+class TellingYouMustNeverBreakAnything(unittest.TestCase):
+    """notify.py runs inside the failure path of a scrape.
+
+    Something whose whole job is to report a broken scrape must not be able
+    to break one further, and must do nothing at all until it is set up --
+    it ships unconfigured and most runs of this code will never have a URL
+    in front of it.
+    """
+
+    def setUp(self):
+        import notify
+        self.notify = notify
+
+    def test_unconfigured_does_nothing_and_raises_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "notify.txt"
+            self.assertIsNone(self.notify.configured(missing))
+
+    def test_an_unreachable_url_is_reported_not_raised(self):
+        """The Pi's network being down is the single most likely moment for
+        this code to run, so it is also the most likely to fail itself."""
+        ok, why = self.notify.post("http://127.0.0.1:1/nothing-here")
+        self.assertFalse(ok)
+        self.assertTrue(why)
+
+    def test_comments_and_blank_lines_are_ignored(self):
+        """It is a file a person edits, so it will have a note in it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "notify.txt"
+            f.write_text("# my phone, from the ntfy app\n\n"
+                         "https://ntfy.sh/some-topic\n", encoding="utf-8")
+            self.assertEqual(self.notify.configured(f),
+                             "https://ntfy.sh/some-topic")
+
+    def test_the_same_problem_is_not_reported_every_hour(self):
+        """Fourteen identical alerts a day is a notification you learn to
+        swipe away, which is the same as having none."""
+        db = fresh_db()
+        same = "cannot reach Brightspace -- ConnectError"
+        for err in (same, same):
+            db.execute("INSERT INTO runs (started_at, finished_at, mode, error)"
+                       " VALUES (?,?,'update',?)", (store.now(), store.now(), err))
+        db.commit()
+        self.assertFalse(self.notify.is_new(db, same))
+
+    def test_a_different_problem_is_reported(self):
+        db = fresh_db()
+        for err in ("cannot reach Brightspace", "Brightspace login expired"):
+            db.execute("INSERT INTO runs (started_at, finished_at, mode, error)"
+                       " VALUES (?,?,'update',?)", (store.now(), store.now(), err))
+        db.commit()
+        self.assertTrue(self.notify.is_new(db, "Brightspace login expired"))
+
+    def test_the_first_failure_after_things_worked_is_reported(self):
+        db = fresh_db()
+        db.execute("INSERT INTO runs (started_at, finished_at, mode, error)"
+                   " VALUES (?,?,'update',NULL)", (store.now(), store.now()))
+        db.execute("INSERT INTO runs (started_at, finished_at, mode, error)"
+                   " VALUES (?,?,'update',?)",
+                   (store.now(), store.now(), "the stick is full"))
+        db.commit()
+        self.assertTrue(self.notify.is_new(db, "the stick is full"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

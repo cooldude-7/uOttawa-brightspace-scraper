@@ -20,6 +20,7 @@ import download
 import exact
 import find_dates
 import link_tasks
+import notify
 import paths
 import posted_work
 import store
@@ -67,6 +68,20 @@ def main():
         db = store.connect()
         store.finish_run(db, run_id, 0, 0, 0, 0, error=why[:400])
         db.commit()
+
+        # Off the Pi, while the Pi can still speak. The heartbeat goes first
+        # and separately: it must be sent even if the push fails, because a
+        # service watching for silence is the only thing that can report a
+        # Pi that is off. One push per distinct problem -- the timer runs
+        # fourteen times a day and fourteen identical alerts is a thing you
+        # learn to swipe away.
+        try:
+            notify.beat(ok=False)
+            if notify.is_new(db, why[:400]):
+                notify.send("Brightspace scrape failed", why[:400])
+        except Exception:
+            # Telling you about a broken scrape must never break one further.
+            pass
         db.close()
         raise
 
@@ -74,6 +89,14 @@ def main():
     store.finish_run(db, run_id, 0, 0, 0, 0)
     db.commit()
     db.close()
+
+    # The all-clear. Nothing is sent to your phone for a good scrape; this
+    # goes to a service that expects one every hour and emails you when
+    # they stop arriving.
+    try:
+        notify.beat(ok=True)
+    except Exception:
+        pass
 
 
 def plural(n):
