@@ -421,7 +421,7 @@ def walk_content(client, oid):
     their own.
     """
     modules, topics = [], []
-    seen_modules, seen_topics = set(), set()
+    seen_modules, seen_topics, walked = set(), set(), set()
 
     def add_module(m):
         mid = m.get("Id") or m.get("ModuleId")
@@ -438,7 +438,16 @@ def walk_content(client, oid):
             "modified": m.get("LastModifiedDate"),
         })
 
-    def add_topic(t):
+    def add_topic(t, parent=None):
+        """`parent` is the module this item sits in -- the folder a student
+        sees it under.
+
+        It used to be dropped, and the loss was invisible: topics came out
+        as one flat list, so "is everything from Lecture 5 in the vault?"
+        could not be answered by anything here, because nothing recorded
+        that a document was in Lecture 5. The tree is already in the
+        response being walked, so keeping it costs no request and no time.
+        """
         tid = t.get("Id") or t.get("TopicId")
         if tid in seen_topics:
             return
@@ -451,6 +460,8 @@ def walk_content(client, oid):
             "due": t.get("DueDate"),
             "description": (t.get("Description") or {}).get("Text", "") or "",
             "modified": t.get("LastModifiedDate"),
+            "module_id": (parent or {}).get("Id") or (parent or {}).get("ModuleId"),
+            "module": (parent or {}).get("Title"),
         })
 
     # --- preferred: whole tree in one call ---------------------------
@@ -461,7 +472,7 @@ def walk_content(client, oid):
                 return
             add_module(module)
             for t in module.get("Topics") or []:
-                add_topic(t)
+                add_topic(t, module)
             for sub in module.get("Modules") or []:
                 descend(sub, depth + 1)
 
@@ -470,26 +481,35 @@ def walk_content(client, oid):
         return modules, topics
 
     # --- fallback: walk each module's structure endpoint --------------
-    def visit(mid, depth):
-        if depth > MAX_CONTENT_DEPTH or mid in seen_modules:
+    def visit(module, depth):
+        # `walked`, not `seen_modules`: every caller runs add_module() first,
+        # which registers the id, so testing seen_modules here returned
+        # immediately every single time and the fallback never descended past
+        # the one level it gets from each root module's Structure. The same
+        # "only ever saw the top layer" bug the docstring says was fixed --
+        # fixed in the toc path above and left in place down here, where
+        # nothing exercises it often enough to notice.
+        mid = module.get("Id")
+        if depth > MAX_CONTENT_DEPTH or mid in walked:
             return
+        walked.add(mid)
         children = get(client, f"/d2l/api/le/{LE}/{oid}/content/modules/{mid}/structure/")
         for child in children or []:
             if child.get("Type") == 0:
                 add_module(child)
-                visit(child.get("Id"), depth + 1)
+                visit(child, depth + 1)
             else:
-                add_topic(child)
+                add_topic(child, module)
 
     root = get(client, f"/d2l/api/le/{LE}/{oid}/content/root/")
     for module in root or []:
         add_module(module)
-        visit(module.get("Id"), 0)
+        visit(module, 0)
         for child in module.get("Structure") or []:
             if child.get("Type") == 0:
-                visit(child.get("Id"), 1)
+                visit(child, 1)
             else:
-                add_topic(child)
+                add_topic(child, module)
     return modules, topics
 
 

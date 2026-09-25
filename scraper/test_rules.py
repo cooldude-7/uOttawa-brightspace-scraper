@@ -1718,6 +1718,86 @@ class TellingYouMustNeverBreakAnything(unittest.TestCase):
         db.commit()
         self.assertTrue(self.notify.is_new(db, "the stick is full"))
 
+class DocumentsRememberWhichFolderTheyAreIn(unittest.TestCase):
+    """"Is everything from Lecture 5 in the vault?" had no answer at all.
+
+    walk_content() returned topics as one flat list and dropped the module
+    each sat under, so nothing here knew a document belonged to Lecture 5 --
+    not the vault, not the cards, not any probe. A question with no answer
+    is the quiet version of a wrong one. The tree is already in the response
+    being walked, so keeping the parent costs no request.
+    """
+
+    TOC = {"Modules": [{
+        "Id": 1, "Title": "Lecture 5 - Online Modules 1 &2",
+        "Topics": [{"Id": 11, "Title": "5_GNG2101F_Modules 1 and 2", "Url": "/a.pptx"}],
+        "Modules": [{"Id": 2, "Title": "Extra reading",
+                     "Topics": [{"Id": 12, "Title": "Nested", "Url": "/b.pdf"}]}]}]}
+
+    def walk(self, answers):
+        import collect
+        real = collect.get
+        collect.get = lambda client, path, **kw: answers(path)
+        try:
+            return collect.walk_content(None, 1)
+        finally:
+            collect.get = real
+
+    def test_every_topic_keeps_its_folder(self):
+        _mods, topics = self.walk(
+            lambda path: self.TOC if path.endswith("/toc") else None)
+        by = {t["title"]: t["module"] for t in topics}
+        self.assertEqual(by["5_GNG2101F_Modules 1 and 2"],
+                         "Lecture 5 - Online Modules 1 &2")
+        self.assertEqual(by["Nested"], "Extra reading",
+                         "a nested folder must name itself, not its parent")
+
+    def test_the_fallback_walk_actually_descends(self):
+        """visit() tested seen_modules, which add_module() had just filled in
+        one line earlier, so it returned immediately every time and the
+        fallback never went below the top layer -- silently."""
+        root = [{"Id": 1, "Title": "Week 1", "Structure": []}]
+        structure = {1: [{"Id": 2, "Type": 0, "Title": "Inside week 1"}],
+                     2: [{"Id": 99, "Type": 1, "Title": "Buried file",
+                          "Url": "/deep.pdf"}]}
+
+        def answers(path):
+            if path.endswith("/toc"):
+                return None                      # force the fallback
+            if path.endswith("/content/root/"):
+                return root
+            mid = int(path.rstrip("/").split("/")[-2])
+            return structure.get(mid, [])
+
+        _mods, topics = self.walk(answers)
+        self.assertEqual([t["title"] for t in topics], ["Buried file"])
+        self.assertEqual(topics[0]["module"], "Inside week 1")
+
+
+class NamesOnDiskMatchTheirTitles(unittest.TestCase):
+    """A title already ending in an extension gets it doubled on the way to
+    disk -- "Instructions_Project_A.pdf" becomes
+    `Instructions_Project_A.pdf.txt`. section.py compares bare words so it
+    does not have to reproduce that and stay in step with it. Getting this
+    wrong reports documents that are present as missing."""
+
+    def test_a_doubled_extension_still_matches(self):
+        import section
+        self.assertEqual(section.norm("Instructions_Project_A.pdf"),
+                         section.norm("Instructions_Project_A.pdf"))
+        self.assertEqual(section.norm("Instructions_Project_A.pdf.pdf"),
+                         section.norm("Instructions_Project_A"))
+
+    def test_punctuation_and_case_do_not_matter(self):
+        import section
+        self.assertEqual(section.norm("5_GNG2101F_Modules 1 and 2_2026W"),
+                         section.norm("5 gng2101f modules 1 AND 2 2026w"))
+
+    def test_two_different_documents_do_not_collide(self):
+        import section
+        self.assertNotEqual(section.norm("Instructions_Project_A"),
+                            section.norm("Instructions_Project_B"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

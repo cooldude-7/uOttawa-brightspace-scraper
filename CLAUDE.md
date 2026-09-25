@@ -156,6 +156,7 @@ python link_tasks.py       give undated to-dos a place in the term
 python posted_work.py      documents that ARE work; --store to keep them
 python probe_year.py       check a year-typo correction lands on the right weekday
 python probe_attachments.py GNG2101   files hanging off tabs we never download
+python section.py GNG2101 "lecture 5"  what is in one folder, and what reached the vault
 python supersede.py        stored dates Brightspace has replaced; --apply retires them
 python reschedule.py       one schedule replaced another; --apply retires the old rows
 python store.py --year-typo MCG2130 off          retire a correction once the prof fixes it
@@ -700,6 +701,34 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   table and found **0 of 43 files**, because the documents it exists to find
   are exactly the ones the table excludes. Anything wanting *every* file must
   read `paths.EXTRACTED` off disk instead.
+- **A flat list cannot answer a question about a folder.** The student
+  asked whether the vault had Lecture 5 and everything in it, and nothing
+  here could say. `walk_content()` returned topics as one flat list and
+  threw the parent module away, so no part of the codebase knew a document
+  belonged to "Lecture 5 - Online Modules 1 &2 | Project Discussion" -- not
+  the vault, not the cards, not a probe. The question had no answer rather
+  than a wrong one, which is the quieter version of the same failure.
+  `add_topic()` now keeps `module` and `module_id`; the tree is already in
+  the `/content/toc` response being walked, so it costs no request. Items
+  collected before this show as "(folder not recorded)" until the next
+  scrape, said out loud rather than shown as an empty folder.
+
+  `section.py` reads `collected.json` off the disk and lists a folder item
+  by item against what is actually extracted -- no requests, no session, no
+  cost, so it answers even while the scraper cannot log in. It explains
+  rather than just ticking: a SCORM package has no file by design, a link
+  has nothing to download, and only a real file with no text is `MISS`.
+  Matching is on bare words, because a title already ending in `.pdf` gets
+  its extension doubled on the way to disk (`Instructions_Project_A.pdf` ->
+  `Instructions_Project_A.pdf.txt`) and reproducing that here would be one
+  more thing to keep in step.
+
+  Exposed on the way: the fallback walker's `visit()` tested `seen_modules`,
+  which `add_module()` had filled in one line earlier, so it returned
+  immediately every time and never descended past the one layer each root
+  module's `Structure` provides -- the same "only ever saw the top layer"
+  bug the docstring says was fixed, fixed in the toc path and left in the
+  fallback where nothing exercises it. It tracks `walked` now.
 - **A linked date is inferred, not stated.** `linked_to` being set is what
   says so, and the card shows "before Lab 5" in a different colour for exactly
   that reason. Never let a linked date render as though a document published it.
@@ -800,7 +829,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Eighty-two tests, standard library only, a third of a second. They are not
+Eighty-seven tests, standard library only, a third of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another
