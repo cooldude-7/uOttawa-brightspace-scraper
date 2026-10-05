@@ -228,6 +228,13 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   (the database and `collected.json`, no API call), so `update.py` now writes
   them on every scrape. Re-uploading is still manual, because Claude Projects
   have no API; being out of date no longer is.
+
+  Every bundle also opens with `Skills/how-i-study.md` when it exists: the
+  one note that is about the student rather than a course -- what went wrong
+  in the last exam, the method, the current plan. Without it each course's
+  coach starts cold and re-learns the same failure mode. User-edited, never
+  regenerated, and it must never carry anything from the psychoeducational
+  report itself -- that stays in `profile/`, outside the vault, on purpose.
 - **prep.py** — runs a skill against one real item and writes the result into
   its note in `Work/`. How far it goes is decided by
   `Skills/course-policies.md`, not by code: GNG2101's professor permits AI

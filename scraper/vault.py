@@ -163,6 +163,22 @@ def bundle(dry=False, quiet=False):
                f"{today.strftime('%d %B %Y')}. Built for uploading into a "
                f"Claude Project; the vault itself is the readable version.", ""]
 
+        # The study method goes into every bundle, first. It is the one note
+        # that is about the student rather than about a course, and a Claude
+        # Project only knows what is uploaded to it -- so without this, each
+        # course's coach starts cold and re-learns the same failure mode. It
+        # lives in Skills/ (user-edited, never regenerated) and is included
+        # only if it exists.
+        method = root / "Skills" / "how-i-study.md"
+        if method.exists():
+            body = method.read_text(encoding="utf-8", errors="replace")
+            if body.startswith("---"):
+                body = body.split("---", 2)[-1]
+            out += ["## How I study", "",
+                    "_From `Skills/how-i-study.md` -- the method, what went wrong "
+                    "last time, and the current plan. Read this before helping "
+                    "me study._", "", body.strip(), ""]
+
         dated = [r for r in rows if r["due_date"] and r["kind"] != "todo"]
         tasks = [r for r in rows if r["kind"] == "todo"]
         waiting = [r for r in rows if not r["due_date"] and r["kind"] != "todo"]
