@@ -578,6 +578,46 @@ class BackupRoundTrip(unittest.TestCase):
                 paths.VAULT = old_vault
                 store._prepared = old_prepared
 
+    def run_with(self, tmp, before_restore):
+        """Dump a machine with settings, then restore onto a 'new' one."""
+        import backup, paths
+        root = Path(tmp)
+        saved = (paths.DB, paths.VAULT, paths.PREFS, store._prepared)
+        paths.DB = store.DB_PATH = root / "brightspace.db"
+        paths.VAULT, paths.PREFS = root / "vault", root / "me.json"
+        store._prepared = False
+        try:
+            db = store.connect(); add_course(db); db.commit(); db.close()
+            paths.PREFS.write_text('{"groups": {"601307": "thursday"}}', encoding="utf-8")
+            backup.dump(quiet=True)
+            paths.DB.unlink()
+            before_restore(paths.PREFS)
+            store._prepared = False
+            backup.restore([])
+            return paths.PREFS.read_text(encoding="utf-8") if paths.PREFS.exists() else None
+        finally:
+            paths.DB = store.DB_PATH = saved[0]
+            paths.VAULT, paths.PREFS, store._prepared = saved[1], saved[2], saved[3]
+
+    def test_lab_settings_come_back_with_the_deadlines(self):
+        """The Pi's SD card was reflashed and the move to the laptop brought
+        every deadline back and no filter: the Thursday setting lived only
+        in me.json, which the dump never carried, so every Wednesday lab
+        returned."""
+        with tempfile.TemporaryDirectory() as tmp:
+            got = self.run_with(tmp, lambda prefs: prefs.unlink())
+        self.assertIsNotNone(got, "the settings were not restored")
+        self.assertIn("thursday", got)
+
+    def test_settings_already_on_the_machine_are_not_overwritten(self):
+        """Whatever is on this machine is newer than any backup, and replacing
+        a section setting silently is exactly how deadlines get hidden."""
+        def newer(prefs):
+            prefs.write_text('{"groups": {"601307": "wednesday"}}', encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            got = self.run_with(tmp, newer)
+        self.assertIn("wednesday", got)
+
 
 class SupersededDatesAreRetiredSafely(unittest.TestCase):
     """A correction rule outlives the typo, and its rows stay behind.

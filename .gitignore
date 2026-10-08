@@ -21,3 +21,6 @@ labs/labpdf.json
 # URLs that can message you or fake your heartbeat
 notify.txt
 heartbeat.txt
+
+# hourly scrape and web app output on the laptop
+scraper/logs/

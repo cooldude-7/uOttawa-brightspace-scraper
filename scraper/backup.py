@@ -28,10 +28,32 @@ import paths
 
 SKIP_TABLES = {"runs", "sqlite_sequence"}
 DUMP = lambda: paths.VAULT / "_backup" / "deadlines.sql"
+# Your lab section, lab day and any year-typo rule. Not secret, tiny, and
+# not in the database -- so the dump above never carried it. When the Pi's
+# SD card was reflashed and everything moved to the laptop, the deadlines
+# came back from the vault and the filters did not: every Wednesday lab
+# returned until they were set again by hand. Copied beside the dump now.
+PREFS_COPY = lambda: paths.VAULT / "_backup" / "me.json"
+
+
+def copy_prefs(quiet=False):
+    """Mirror me.json into the vault, only when it changed."""
+    if not paths.PREFS.exists():
+        return None
+    body = paths.PREFS.read_text(encoding="utf-8")
+    out = PREFS_COPY()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if out.exists() and out.read_text(encoding="utf-8") == body:
+        return out
+    out.write_text(body, encoding="utf-8")
+    if not quiet:
+        print(f"  settings backed up -> {out}")
+    return out
 
 
 def dump(quiet=False):
     """Write the dump. Returns the path, or None if there is nothing to copy."""
+    copy_prefs(quiet)
     if not paths.DB.exists():
         if not quiet:
             print("  no database yet -- nothing to back up")
@@ -107,6 +129,19 @@ def restore(argv):
         db.commit()
     finally:
         db.close()
+
+    # The settings, if the backup has them and this machine has none. An
+    # existing me.json is left alone: it is newer than any copy, and
+    # silently replacing a lab-section setting is how deadlines get hidden.
+    saved = PREFS_COPY()
+    if saved.exists() and not paths.PREFS.exists():
+        paths.PREFS.write_text(saved.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"  settings restored -> {paths.PREFS}")
+    elif saved.exists():
+        print(f"  settings: kept the existing {paths.PREFS.name}, not the backup")
+    else:
+        print("  settings: none in the backup -- set your lab section and day "
+              "again (python store.py --me shows what is set)")
 
     db = store.connect()
     try:

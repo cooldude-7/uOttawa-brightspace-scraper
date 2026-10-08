@@ -38,6 +38,27 @@ pasted block runs every line in it.
 
 ## State
 
+**Moved to the student's ThinkPad (2026-10-08).** The Pi's SD card was
+reflashed and the Pi is offline; its data is still on the 256 GB stick
+(ext4 -- Windows cannot read it, and offers to format it: never accept).
+The laptop restored from the vault dump of 2026-09-23, the last good Pi
+scrape. `deploy/windows-install.ps1` registers two Task Scheduler tasks --
+the web app at sign-in, a scrape hourly 07:00-21:00 -- and keeps the
+machine awake with the lid shut on AC. The tasks run in the user's own
+session on purpose: an expired login needs a browser window someone can
+see, and `browser_login()` gives up after five minutes rather than hanging,
+so an unattended expiry costs one failed hour. Data sits next to the code
+(`BRIGHTSPACE_DATA` unset); `scraper/vault` is its own clone of
+obsidian-brain so `--restore` and the push both work. Do not run the Pi and
+the laptop at once: each keeps its own database and they drift.
+
+`me.json` -- lab section, lab day, year-typo rules -- was never in the
+dump, so the move brought every deadline back and no filter. `backup.py`
+now copies it beside the dump and restores it only onto a machine with no
+`me.json` of its own.
+
+The Pi notes below describe how it ran, and still apply if it comes back.
+
 Working end to end: login → scrape → download → read → store → link tasks →
 web app → calendar → vault. Running on the Pi, not the laptop.
 
@@ -836,7 +857,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Eighty-seven tests, standard library only, a third of a second. They are not
+Eighty-nine tests, standard library only, a third of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another
