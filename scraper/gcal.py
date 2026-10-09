@@ -12,6 +12,7 @@ Puts accepted deadlines into your Google Calendar.
     python gcal.py --tidy       remove events for cards you no longer keep
     python gcal.py --remove-all take it all back out again
     python gcal.py --separate   move them to their own calendar you can hide
+    python gcal.py --separate ID  use one this app already made (after a move)
     python gcal.py --primary    move them back to your main calendar
 
 Events go in your main calendar, tagged in their description so this app
@@ -326,13 +327,39 @@ def main():
         return
 
     if "--separate" in argv or "--primary" in argv:
-        prefs = store.load_prefs()
         old_target = target()
+
+        # `--separate <calendar id>` adopts a calendar this app made before,
+        # rather than making another. Which calendar is in use lives in
+        # me.json, and the Pi's me.json was never backed up -- so after the
+        # move the laptop looked in the main calendar, found 23 of 117
+        # events, and reported the rest as deleted. They were not; they
+        # were on the "uOttawa deadlines" calendar the Pi had made. The id is
+        # under that calendar's Settings > Integrate calendar.
+        at = argv.index("--separate") if "--separate" in argv else -1
+        given = argv[at + 1] if 0 <= at < len(argv) - 1 and "@" in argv[at + 1] else None
+        if given:
+            try:
+                found = api.calendars().get(calendarId=given).execute()
+            except Exception as e:
+                print(f"  Could not open that calendar: {e}\n"
+                      "  Check the id was copied whole, ending in "
+                      "@group.calendar.google.com.")
+                return
+            adopt = store.load_prefs()
+            adopt["app_calendar_id"] = given
+            store.save_prefs(adopt)
+            print(f'  Found "{found.get("summary", given)}" with '
+                  f"{len(mine(api, given))} event(s) from this app on it.")
 
         if "--primary" in argv:
             new_target, label = CALENDAR, "your main calendar"
         else:
             new_target, label = ensure_calendar(api), f'"{CALENDAR_NAME}"'
+        # Loaded after ensure_calendar(), which writes app_calendar_id
+        # itself: a copy loaded before it and saved below silently dropped
+        # that id, and the next --separate made a second calendar.
+        prefs = store.load_prefs()
 
         if new_target == old_target:
             print(f"  Already using {label}.")
@@ -459,9 +486,18 @@ def main():
             missing_there = known - on_calendar
             print(f"\n  This app has {known} event id(s); Google has {on_calendar}.")
             if missing_there > 0:
-                print(f"  {missing_there} were deleted in Google Calendar directly."
-                      "\n  Harmless -- `python gcal.py --push` puts back any that"
-                      "\n  belong to a card you still keep.")
+                # This used to say they were deleted and that --push would put
+                # them back. --push only sends cards with no event id, so it
+                # never could; and the real cause, after a move to a new
+                # machine, was a calendar setting that did not come along.
+                where = ("your main calendar" if target() == CALENDAR
+                         else f'"{CALENDAR_NAME}"')
+                print(f"  {missing_there} are not on {where}, which is the only"
+                      " calendar\n  this looked in. Either they live on another"
+                      " calendar -- the usual\n  reason after moving machines:"
+                      " python gcal.py --separate <calendar id>\n  -- or they"
+                      " were deleted in Google Calendar, and --push will not\n"
+                      "  resend them, because each still has an id on file.")
             else:
                 print(f"  {-missing_there} on Google that this app did not put"
                       " there, or\n  put there before a database restore. "

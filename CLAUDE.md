@@ -659,6 +659,17 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   between machines -- which matters, because `google_token.json` is one.
   A fixed port is required: the default picks a random one, and a tunnel
   cannot be set up in advance for a port nobody knows yet.
+- **Which calendar is a setting, and settings did not survive the move.**
+  The Pi had moved events to the app's own "uOttawa deadlines" calendar;
+  the id naming it lived in the Pi's `me.json`, which was never backed up.
+  The laptop then looked in the main calendar, found 23 of 117 events, and
+  `--check` said the other 94 were "deleted in Google Calendar directly" --
+  and that `--push` would put them back, which it cannot: `--push` only
+  sends cards with no event id. `gcal.py --separate <calendar id>` adopts
+  the existing calendar (the id is in its Settings > Integrate calendar).
+  `--separate` also used to save a copy of `me.json` read before
+  `ensure_calendar()` wrote the new id, dropping it, so the next
+  `--separate` made a second calendar.
 - **A resolved row leaves its calendar event behind.** `--check` listed
   four "event(s) for cards you no longer keep" -- MCG2130's Assignment #1
   to #4, the stale Saturday rows from the year typo, accepted early enough
@@ -861,7 +872,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Eighty-nine tests, standard library only, a third of a second. They are not
+Ninety-one tests, standard library only, a third of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another

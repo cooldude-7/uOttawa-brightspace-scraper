@@ -1839,5 +1839,82 @@ class NamesOnDiskMatchTheirTitles(unittest.TestCase):
                             section.norm("Instructions_Project_B"))
 
 
+class TheCalendarComesWithTheMove(unittest.TestCase):
+    """After the Pi died, the laptop looked in the main calendar, found 23 of
+    117 events and called the rest deleted. They were on the app's own
+    calendar; the setting naming it had not come along. `--separate <id>`
+    adopts that calendar -- and must keep its id, or the next --separate
+    quietly makes a second "uOttawa deadlines"."""
+
+    def _run(self, argv, prefs_path):
+        import sys as _sys
+        import gcal
+
+        class Ex:
+            def __init__(self, v): self.v = v
+            def execute(self):
+                if isinstance(self.v, Exception):
+                    raise self.v
+                return self.v
+
+        made = []
+        ours = "abc@group.calendar.google.com"
+
+        class Api:
+            def calendars(self):
+                class C:
+                    def get(_, calendarId):
+                        return Ex({"summary": "uOttawa deadlines"} if calendarId == ours
+                                  else Exception("404"))
+                    def insert(_, body):
+                        made.append(body)
+                        return Ex({"id": "new@group.calendar.google.com"})
+                return C()
+            def events(self):
+                class E:
+                    def list(_, calendarId, **k):
+                        return Ex({"items": []})
+                    def move(_, **k):
+                        return Ex({})
+                return E()
+
+        old = (store.PREFS_PATH, gcal.service, _sys.argv)
+        store.PREFS_PATH = prefs_path
+        gcal.service = lambda *a, **k: Api()
+        _sys.argv = ["gcal.py"] + argv
+        try:
+            import contextlib, io
+            with contextlib.redirect_stdout(io.StringIO()):
+                gcal.main()
+        finally:
+            store.PREFS_PATH, gcal.service, _sys.argv = old
+        return made
+
+    def test_adopting_keeps_the_id_and_makes_nothing_new(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "me.json"
+            prefs.write_text('{"groups": {"601307": "thursday"}}', encoding="utf-8")
+            made = self._run(["--separate", "abc@group.calendar.google.com"], prefs)
+            import json
+            saved = json.loads(prefs.read_text(encoding="utf-8"))
+            self.assertEqual(made, [], "adopting must not create a calendar")
+            self.assertEqual(saved.get("calendar_id"), "abc@group.calendar.google.com")
+            self.assertEqual(saved.get("app_calendar_id"), "abc@group.calendar.google.com",
+                             "the id was dropped, so the next --separate makes another")
+            self.assertEqual(saved.get("groups"), {"601307": "thursday"},
+                             "a calendar setting must not cost the lab-day filter")
+            # And again: still nothing created.
+            self.assertEqual(self._run(["--separate"], prefs), [])
+
+    def test_a_wrong_id_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            prefs = Path(tmp) / "me.json"
+            prefs.write_text('{"groups": {"601307": "thursday"}}', encoding="utf-8")
+            made = self._run(["--separate", "typo@group.calendar.google.com"], prefs)
+            self.assertEqual(made, [])
+            self.assertEqual(prefs.read_text(encoding="utf-8"),
+                             '{"groups": {"601307": "thursday"}}')
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
