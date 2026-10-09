@@ -44,6 +44,21 @@ if ($Remove) {
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     throw "python is not on PATH -- install Python first."
 }
+
+# The exact Python this window uses, by full path. A machine can hold two
+# (the ThinkPad had one from September and one from winget), and a scheduled
+# task does not necessarily get the same PATH as the window you installed
+# into: it started the other one, which had none of the packages, and the
+# app died on its first import while this script printed "running now".
+$py = (& python -c "import sys; print(sys.executable)" | Select-Object -First 1).Trim()
+# No 2>$null: under "Stop", Windows PowerShell turns redirected stderr from a
+# program into a terminating error, which would hide the message below.
+# The traceback it prints names the missing package, which is useful anyway.
+& $py -c "import fastapi, uvicorn, httpx, anthropic, fitz"
+if ($LASTEXITCODE -ne 0) {
+    throw ("$py is missing packages. From the repo folder run:`n" +
+           "  `"$py`" -m pip install -r scraper\requirements-pi.txt playwright")
+}
 if (-not (Test-Path (Join-Path $scraper "brightspace.db"))) {
     Write-Warning "No scraper\brightspace.db yet. Run 'python backup.py --restore' and one 'python update.py' by hand first."
 }
@@ -53,9 +68,12 @@ $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunL
 
 # conhost --headless runs the .cmd with no console window flashing up every
 # hour. A login browser, if one is needed, still opens normally.
+# The Python path goes to the .cmd as its argument. cmd /c strips the outer
+# pair of quotes, so both quoted paths sit inside one more pair.
 function Launch($cmd) {
     New-ScheduledTaskAction -Execute "conhost.exe" `
-        -Argument "--headless cmd.exe /c `"$(Join-Path $deploy $cmd)`"" -WorkingDirectory $scraper
+        -Argument "--headless cmd.exe /c `"`"$(Join-Path $deploy $cmd)`" `"$py`"`"" `
+        -WorkingDirectory $scraper
 }
 
 # --- the web app: at sign-in, restarted if it ever dies -------------------
@@ -101,13 +119,30 @@ $power = if ($failed) {
 
 Start-ScheduledTask -TaskName "Brightspace web"
 
+# Say "running" only once something is answering. Starting the task proves
+# nothing -- the September Python started fine and died on its first line.
+$up = $false
+foreach ($i in 1..20) {
+    Start-Sleep -Seconds 1
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    try { $tcp.Connect("127.0.0.1", 8000); $up = $true } catch { } finally { $tcp.Close() }
+    if ($up) { break }
+}
+$weblog = Join-Path $scraper "logs\web.log"
+
 $ip = (Get-NetIPConfiguration -ErrorAction SilentlyContinue |
        Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq "Up" } |
        Select-Object -First 1).IPv4Address.IPAddress
 
 Write-Host ""
 Write-Host "  Installed."
-Write-Host "    web app   running now, and at every sign-in"
+if ($up) {
+    Write-Host "    web app   running now, and at every sign-in"
+} else {
+    Write-Host "    web app   NOT answering after 20 seconds. Last lines of web.log:" -ForegroundColor Red
+    if (Test-Path $weblog) { Get-Content $weblog -Tail 8 | ForEach-Object { Write-Host "      $_" } }
+}
+Write-Host "    python    $py"
 Write-Host "    scraping  every hour, 07:00 to 21:00"
 Write-Host "    power     $power"
 Write-Host ""
