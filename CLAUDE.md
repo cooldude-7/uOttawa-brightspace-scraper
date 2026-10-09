@@ -38,7 +38,11 @@ pasted block runs every line in it.
 
 ## State
 
-**Moved to the student's ThinkPad (2026-10-08).** The Pi's SD card was
+**Moved off the Pi (2026-10-08), first to the student's everyday laptop
+(a Lenovo IdeaPad 5i), then to an old ThinkPad as the always-on machine.**
+Two Windows machines, not one: the restore and first scrape happened on the
+5i, so the ThinkPad starts from the 5i's dump, and the 5i's tasks come off
+(`windows-install.ps1 -Remove`) before the ThinkPad's go on. The Pi's SD card was
 reflashed and the Pi is offline; its data is still on the 256 GB stick
 (ext4 -- Windows cannot read it, and offers to format it: never accept).
 The laptop restored from the vault dump of 2026-09-23, the last good Pi
@@ -49,8 +53,8 @@ session on purpose: an expired login needs a browser window someone can
 see, and `browser_login()` gives up after five minutes rather than hanging,
 so an unattended expiry costs one failed hour. Data sits next to the code
 (`BRIGHTSPACE_DATA` unset); `scraper/vault` is its own clone of
-obsidian-brain so `--restore` and the push both work. Do not run the Pi and
-the laptop at once: each keeps its own database and they drift.
+obsidian-brain so `--restore` and the push both work. Do not run two of
+these machines at once: each keeps its own database and they drift.
 
 `me.json` -- lab section, lab day, year-typo rules -- was never in the
 dump, so the move brought every deadline back and no filter. `backup.py`
