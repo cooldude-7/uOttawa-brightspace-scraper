@@ -132,7 +132,10 @@ def service(interactive=False, force=False, port=0):
         # Google's redirect comes back to localhost:8765 in the laptop's
         # browser, down the tunnel, to the server waiting here. Nothing is
         # exposed and no secret is copied between machines.
-        headless = not os.environ.get("DISPLAY")
+        # DISPLAY is a Linux idea: Windows never sets it, so testing it alone
+        # called every Windows laptop headless and printed a link to paste
+        # on a machine with a perfectly good browser.
+        headless = sys.platform.startswith("linux") and not os.environ.get("DISPLAY")
         if headless:
             print("\n  No display here, so the link is printed rather than opened.")
             if not port:
