@@ -56,6 +56,14 @@ so an unattended expiry costs one failed hour. Data sits next to the code
 obsidian-brain so `--restore` and the push both work. Do not run two of
 these machines at once: each keeps its own database and they drift.
 
+Running on the ThinkPad since 2026-10-08: tasks installed and verified
+answering, Python 3.14 at `%LOCALAPPDATA%\Programs\Python\Python314` (the
+machine also holds an older Python without the packages -- the installer
+now pins the full path), calendar re-adopted with `--separate <id>`, phone
+reaching it over Tailscale at the ThinkPad's 100.x address. Google's OAuth
+app is still in Testing, so the calendar token dies about 7 days after each
+`gcal.py --setup`; publishing was blocked by an incomplete Branding page.
+
 `me.json` -- lab section, lab day, year-typo rules -- was never in the
 dump, so the move brought every deadline back and no filter. `backup.py`
 now copies it beside the dump and restores it only onto a machine with no
