@@ -1411,7 +1411,7 @@ class WrappedCallsMatchTheirFunctions(unittest.TestCase):
     def unpack_count(self, module, func):
         """How many names does update.py bind from `module.func(...)`?"""
         import ast
-        tree = ast.parse(Path("update.py").read_text(encoding="utf-8"))
+        tree = ast.parse((Path(__file__).parent / "update.py").read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Assign):
                 continue
@@ -1428,7 +1428,7 @@ class WrappedCallsMatchTheirFunctions(unittest.TestCase):
     def returns_count(self, module, func):
         """How many values does that function's return statement carry?"""
         import ast
-        tree = ast.parse(Path(f"{module}.py").read_text(encoding="utf-8"))
+        tree = ast.parse((Path(__file__).parent / f"{module}.py").read_text(encoding="utf-8"))
         counts = set()
         for node in ast.walk(tree):
             if not (isinstance(node, ast.FunctionDef) and node.name == func):
@@ -1681,7 +1681,7 @@ class TheDoctorChecksInOrder(unittest.TestCase):
         names = [n for n, _ in [
             ("data disk", None), ("network", None), ("Brightspace login", None),
             ("AI key", None), ("Google Calendar", None), ("last good scrape", None)]]
-        source = Path("doctor.py").read_text(encoding="utf-8")
+        source = (Path(__file__).parent / "doctor.py").read_text(encoding="utf-8")
         order = source.split("order = [")[1].split("]")[0]
         found = [n for n in names if f'"{n}"' in order]
         self.assertEqual(found, names, "the checks are no longer in order")
