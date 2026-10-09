@@ -45,6 +45,12 @@ TIMEZONE = "America/Toronto"
 # what it created and never anything you added yourself.
 MARKER = "[brightspace-scraper]"
 
+# The last reason printed for having no calendar. The web app asks for a
+# client on every tap, so without this one missing token filled the
+# terminal with forty identical paragraphs -- enough to read as forty
+# failures, when it was one setup step not yet done.
+_told = None
+
 
 def service(interactive=False, force=False, port=0):
     """An authorised Calendar client, or None with an explanation printed."""
@@ -105,8 +111,12 @@ def service(interactive=False, force=False, port=0):
 
     if not creds or not creds.valid:
         if not interactive:
-            if why:
-                print(f"  Google Calendar is not connected: {why}")
+            global _told
+            if why and why != _told:
+                print(f"  Google Calendar is not connected: {why}\n"
+                      "  (said once; decisions are still saved, and\n"
+                      "  python gcal.py --push sends them once it is set up)")
+                _told = why
             return None
         if not CLIENT_FILE.exists():
             print(f"  Missing {CLIENT_FILE.name}. See the setup steps.")
