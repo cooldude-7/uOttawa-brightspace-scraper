@@ -107,6 +107,15 @@ Register-ScheduledTask -TaskName "Brightspace update" -Principal $principal `
 $failed = 0
 foreach ($args_ in @(
         @("/setacvalueindex", "SCHEME_CURRENT", "SUB_BUTTONS", "LIDACTION", "0"),
+        # The ThinkPad slept on its first night with the lid set to "Do
+        # nothing" on AC: Windows logged "Sleep Reason: Button or Lid", and
+        # hid its lid settings, which is what it does when it does not fully
+        # own the lid. Firmware then reports the lid as a sleep-button press,
+        # and that button still said Sleep. On battery the lid also still
+        # said Sleep, so a loose charger had the same effect. A machine whose
+        # only job is to stay up should stay up through either.
+        @("/setacvalueindex", "SCHEME_CURRENT", "SUB_BUTTONS", "SBUTTONACTION", "0"),
+        @("/setdcvalueindex", "SCHEME_CURRENT", "SUB_BUTTONS", "LIDACTION", "0"),
         @("/change", "standby-timeout-ac", "0"),
         @("/change", "hibernate-timeout-ac", "0"),
         @("/setactive", "SCHEME_CURRENT"))) {

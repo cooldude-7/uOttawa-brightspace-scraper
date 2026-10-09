@@ -64,6 +64,14 @@ reaching it over Tailscale at the ThinkPad's 100.x address. Google's OAuth
 app is still in Testing, so the calendar token dies about 7 days after each
 `gcal.py --setup`; publishing was blocked by an incomplete Branding page.
 
+Its first night it slept anyway: "Sleep Reason: Button or Lid" at 22:06,
+lid set to Do nothing on AC. Windows hides this ThinkPad's lid settings
+(`powercfg /q` shows only the Start-menu button; `/qh` shows the rest),
+the sign of a lid it does not fully own, and the sleep button was still
+Sleep -- so the installer now sets the sleep button (AC) and the lid (DC)
+to Do nothing as well. Check a sleep with Event 42's "Sleep Reason", not
+by reasoning about which setting should have applied.
+
 `me.json` -- lab section, lab day, year-typo rules -- was never in the
 dump, so the move brought every deadline back and no filter. `backup.py`
 now copies it beside the dump and restores it only onto a machine with no
