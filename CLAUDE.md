@@ -501,6 +501,15 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   them. The student found the duplicate by opening the PDF themselves. A
   document the scraper cannot fetch is a deadline with no second opinion --
   the 404s are worth chasing.
+
+  **Chased, 2026-10-10: it was the `#`.** Every MCG2130 file that 404'd --
+  Assignments #1-#4, two solutions, and last year's Midterm #1 and #2, the
+  week before Midterm 1 -- has a `#` in its file name. Brightspace returns
+  the path raw; to a URL a `#` starts the fragment, so httpx requested
+  `.../Assignment ` and nothing else. `download.file_url()` percent-encodes
+  the path (leaving `%` alone so nothing is encoded twice), and a 404 on a
+  file topic now retries the topic's own `/content/topics/{id}/file`, which
+  follows the item rather than the path.
 - **An active quiz carrying only last term's date is stored with no date.**
   Dropping it hides real work; shifting the year invents a deadline. Neither
   is acceptable, so `exact.py` stores it `pending` -- named but not scheduled
@@ -888,7 +897,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Ninety-one tests, standard library only, a third of a second. They are not
+Ninety-three tests, standard library only, a third of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another

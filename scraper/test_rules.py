@@ -1916,5 +1916,52 @@ class TheCalendarComesWithTheMove(unittest.TestCase):
                              '{"groups": {"601307": "thursday"}}')
 
 
+class AHashInAFileNameIsPartOfTheName(unittest.TestCase):
+    """MCG2130 names its files "Assignment #1.pdf" and "Midterm #1.pdf". A
+    raw # starts a URL fragment, so the request went out for ".../Assignment "
+    and came back 404 -- eight files, last year's midterms among them, every
+    one with a # in its name. Nothing else failed in that course."""
+
+    def _download(self, replies):
+        import importlib
+        import os
+        tmp = tempfile.mkdtemp()
+        Path(tmp, ".brightspace-data").write_text("x", encoding="utf-8")
+        os.environ["BRIGHTSPACE_DATA"] = tmp
+        import paths
+        importlib.reload(paths)
+        import download
+        importlib.reload(download)
+        asked = []
+
+        class Reply:
+            headers = {}
+            def __init__(self, code):
+                self.status_code, self.content = code, b"%PDF-1.4 midterm"
+
+        class Client:
+            def get(self, url, **kw):
+                asked.append(url)
+                return Reply(replies[min(len(asked), len(replies)) - 1])
+
+        topic = {"id": 9001, "title": "Midterm #1", "type": "File",
+                 "url": "/content/enforced/600753-MCG2130A00_20269/Midterm #1.pdf"}
+        path, note = download.download_topic(Client(), topic, Path(tmp) / "out", 600753)
+        return path, note, asked
+
+    def test_the_whole_name_is_requested(self):
+        from urllib.parse import unquote, urlsplit
+        path, note, asked = self._download([200])
+        self.assertIsNotNone(path, note)
+        parts = urlsplit(asked[0])
+        self.assertEqual(parts.fragment, "", "the # must not become a fragment")
+        self.assertTrue(unquote(parts.path).endswith("/Midterm #1.pdf"), asked[0])
+
+    def test_a_missing_path_falls_back_to_the_topic_itself(self):
+        path, note, asked = self._download([404, 200])
+        self.assertIsNotNone(path, note)
+        self.assertTrue(asked[1].endswith("/600753/content/topics/9001/file"), asked)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -12,6 +12,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 from collect import BASE, LE, current_courses, get, get_client, walk_content
 
@@ -97,7 +98,22 @@ def extension(url, title):
     return ""
 
 
-def download_topic(client, topic, folder):
+def file_url(url):
+    """The address to request for a topic's file.
+
+    Brightspace hands back the path raw, file name and all. MCG2130 names
+    its files "Assignment #1.pdf", "Midterm #1.pdf", and to a URL `#` starts
+    the fragment -- the part a browser keeps to itself -- so httpx asked for
+    ".../Assignment " and got 404. Eight files, every one of them with a #
+    in its name, including last year's two midterms the week before the
+    midterm. Encoding it keeps the name whole; `%` stays as it is, so a path
+    that arrives already encoded is not encoded twice.
+    """
+    full = url if url.startswith("http") else BASE + ("" if url.startswith("/") else "/") + url
+    return quote(full, safe=":/?=&%@+,;~!$'()*")
+
+
+def download_topic(client, topic, folder, oid=None):
     """Fetch one file. Returns (path, note) -- path is None if skipped."""
     url = topic.get("url")
     if not url:
@@ -107,7 +123,7 @@ def download_topic(client, topic, folder):
     if kind and kind not in ("file", "contentservice"):
         return None, f"not a file ({kind})"
 
-    full = url if url.startswith("http") else BASE + ("" if url.startswith("/") else "/") + url
+    full = file_url(url)
     ext = extension(url, topic.get("title"))
     name = safe_name(topic.get("title")) + (f".{ext}" if ext else "")
     dest = folder / name
@@ -117,6 +133,13 @@ def download_topic(client, topic, folder):
 
     try:
         r = client.get(full)
+        # The path is the course's file store, and it can stop matching the
+        # topic: a file renamed or replaced behind an unchanged item. The
+        # topic's own /file endpoint follows the item rather than the path.
+        if r.status_code == 404 and oid and topic.get("id") and kind == "file":
+            alt = client.get(f"{BASE}/d2l/api/le/{LE}/{oid}/content/topics/{topic['id']}/file")
+            if alt.status_code == 200:
+                r = alt
     except Exception as e:
         return None, f"failed: {e!r}"
 
@@ -291,7 +314,7 @@ def main(client=None):
         got = read = 0
         links = []
         for topic in topics:
-            path, note = download_topic(client, topic, ORIGINALS / code)
+            path, note = download_topic(client, topic, ORIGINALS / code, course["id"])
             label = (topic.get("title") or "?")[:46]
             if not path:
                 print(f"  skip  {label:<48} {note}")
