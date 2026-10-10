@@ -72,6 +72,18 @@ Sleep -- so the installer now sets the sleep button (AC) and the lid (DC)
 to Do nothing as well. Check a sleep with Event 42's "Sleep Reason", not
 by reasoning about which setting should have applied.
 
+Its second night Windows Update restarted it at 03:11 (Event 1074,
+MoUsoCoreWorker, then TrustedInstaller) and it sat at the sign-in screen
+until noon: the tasks need a signed-in session, and "Use my sign-in info
+to automatically finish setting up after an update" (ARSO) did nothing.
+By default ARSO only acts when BitLocker is on and not suspended, which
+this machine does not have. Set by hand, as admin:
+`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System`
+`DisableAutomaticRestartSignOn=0`, `AutomaticRestartSignOnConfig=1`
+(always). Unproven until the next update restart -- check Event 1074 and
+the vault's commit times the morning after one. Nothing told the student
+for nine hours; `notify.py`'s heartbeat is not set up on the ThinkPad.
+
 `me.json` -- lab section, lab day, year-typo rules -- was never in the
 dump, so the move brought every deadline back and no filter. `backup.py`
 now copies it beside the dump and restores it only onto a machine with no
