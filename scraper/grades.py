@@ -58,12 +58,12 @@ def rows(my_grades, structure=None):
     for c in my_grades.get("categories") or []:
         cid = c.get("Id")
         if cid is not None:
-            cats[cid] = c.get("Name") or ""
+            cats[cid] = (c.get("Name") or "", _num(c.get("Weight")))
     cat_of = {}
     for g in structure or []:
         gid = g.get("Id")
-        if gid is not None:
-            cat_of[str(gid)] = cats.get(g.get("CategoryId"), "")
+        if gid is not None and g.get("CategoryId") in cats:
+            cat_of[str(gid)] = cats[g.get("CategoryId")]
 
     out = []
     for v in values:
@@ -84,15 +84,33 @@ def rows(my_grades, structure=None):
         pn, pd = _num(v.get("PointsNumerator")), _num(v.get("PointsDenominator"))
         wn, wd = _num(v.get("WeightedNumerator")), _num(v.get("WeightedDenominator"))
         comments = ((v.get("Comments") or {}).get("Text") or "").strip()
+        cat_name, cat_weight = cat_of.get(str(v.get("GradeObjectIdentifier")), ("", None))
+        in_category = bool(cat_name)
+        # An item inside a category carries its weight *within* that category
+        # (a lab worth 14.7% of Labs), not of the course -- measured on the
+        # real GNG1106 gradebook, whose twelve lab weights sum to 100. Scale by
+        # the category's own weight to get its share of the course. Without
+        # the category's weight the course share is unknown, not guessed.
+        if in_category:
+            share = (cat_weight * wd / 100.0) if (cat_weight is not None and wd is not None) else None
+            share_got = (cat_weight * wn / 100.0) if (cat_weight is not None and wn is not None) else None
+        else:
+            share, share_got = wd, wn
         out.append({
             "name": name,
-            "category": cat_of.get(str(v.get("GradeObjectIdentifier")), ""),
+            "category": cat_name,
             "points": pn, "out_of": pd,
             "percent": _pct(pn, pd),
             "weighted": wn, "weight": wd,
+            "course_weight": share, "course_got": share_got,
+            "in_category": in_category,
             "displayed": (v.get("DisplayedGrade") or "").strip(),
             "comments": " ".join(comments.split()),
             "graded": pn is not None,
+            # 5 calculated, 6 formula: a professor's own subtotal row, like
+            # GNG2101's "Labs total". Shown, never added to the items it sums.
+            "is_total": v.get("GradeObjectType") in (5, 6)
+                        or type_name in ("calculated", "formula"),
         })
     return out
 
@@ -105,17 +123,28 @@ def standing(rs):
     graded yet. `covered` is how much of the course's weight that percent is
     based on, so 40 means "this is 40% of the course".
     """
-    graded = [r for r in rs if r["graded"]]
-    weighted = [r for r in graded if r["weight"] and r["weighted"] is not None]
+    graded = [r for r in rs if r["graded"] and not r.get("is_total")]
+    # Any graded item that has a weight but whose course share cannot be
+    # worked out would make the percentage quietly wrong -- and falling back
+    # to raw points would hide that the gradebook is weighted at all. So say
+    # nothing rather than something half-right.
+    if any(r["weight"] and r.get("course_weight") is None for r in graded):
+        return (None, 0, "unknown")
+    weighted = [r for r in graded if r.get("course_weight") and r.get("course_got") is not None]
     if weighted:
-        got = sum(r["weighted"] for r in weighted)
-        of = sum(r["weight"] for r in weighted)
+        got = sum(r["course_got"] for r in weighted)
+        of = sum(r["course_weight"] for r in weighted)
         return (_pct(got, of), of, "weights")
     pointed = [r for r in graded if r["out_of"]]
-    if pointed:
+    # Raw points only mean something when every item is on the same scale:
+    # adding a pre-lab out of 100 to a lab out of 1 lets the big numbers
+    # drown the rest. GNG2101's gradebook is exactly that.
+    if pointed and len({r["out_of"] for r in pointed}) == 1:
         got = sum(r["points"] for r in pointed)
         of = sum(r["out_of"] for r in pointed)
         return (_pct(got, of), None, "points")
+    if pointed:
+        return (None, 0, "mixed")
     return (None, 0, "")
 
 
@@ -138,8 +167,15 @@ def fmt(x, places=1):
 
 def summary_line(rs, my_grades):
     pct, covered, basis = standing(rs)
-    graded = sum(1 for r in rs if r["graded"])
+    graded = sum(1 for r in rs if r["graded"] and not r.get("is_total"))
     if pct is None:
+        if basis == "mixed":
+            return (f"{graded} items graded. Brightspace has no weights for this course "
+                    "and the marks are on different scales, so there is no honest single "
+                    "percentage here: use the syllabus weights.")
+        if basis == "unknown":
+            return (f"{graded} items graded. Some category weights were not readable, so "
+                    "no overall percentage is shown rather than a wrong one.")
         return f"Nothing graded yet ({len(rs)} item{'s' if len(rs) != 1 else ''} listed)."
     line = f"**{pct:.1f}%** on what is graded so far ({graded} item{'s' if graded != 1 else ''}"
     if basis == "weights" and covered:
@@ -156,15 +192,18 @@ def table(rs):
     """The marks as a markdown table, graded ones first."""
     if not rs:
         return ["_No grades visible on Brightspace for this course._"]
-    lines = ["| Item | Mark | % | Weight | Comment |", "|---|---|---|---|---|"]
+    lines = ["| Item | Mark | % | Of course | Comment |", "|---|---|---|---|---|"]
     for r in sorted(rs, key=lambda r: not r["graded"]):
         if r["graded"]:
             mark = f"{fmt(r['points'], 2)} / {fmt(r['out_of'], 2)}" if r["out_of"] else fmt(r["points"], 2)
         else:
             mark = "_not graded_"
         pct = f"{r['percent']:.0f}%" if r["percent"] is not None else (r["displayed"] or "")
-        weight = f"{fmt(r['weight'])}%" if r["weight"] else ""
+        cw = r.get("course_weight")
+        weight = f"{fmt(cw, 2)}%" if cw else ""
         name = r["name"] + (f" ({r['category']})" if r["category"] else "")
+        if r.get("is_total"):
+            name += " · _subtotal, not added_"
         comment = r["comments"][:120].replace("|", "/")
         lines.append(f"| {name.replace('|', '/')} | {mark} | {pct} | {weight} | {comment} |")
     return lines

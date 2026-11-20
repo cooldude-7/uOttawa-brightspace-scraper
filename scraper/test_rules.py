@@ -2017,6 +2017,50 @@ class YourMarksAreReadNotInvented(unittest.TestCase):
         self.assertEqual(grades.final_shown(
             {"final": {"PointsNumerator": 61, "PointsDenominator": 100}}), "61.0 %")
 
+    def test_weights_inside_a_category_are_scaled_by_the_category(self):
+        # The real GNG1106 gradebook: lab weights are shares of "Labs"
+        # (summing to 100), and Labs itself is 20% of the course. Reading the
+        # item weights as course weights printed "worth 400% of the course".
+        import grades
+        mg = {"categories": [{"Id": 1, "Name": "Lab", "Weight": 20},
+                             {"Id": 2, "Name": "Midterm", "Weight": 25}],
+              "values": [self._v("Lab1", 10, 10, 50, 50, gid=11),
+                         self._v("Lab2", 5, 10, 25, 50, gid=12),
+                         self._v("Midterm", 65, 100, 65, 100, gid=21)]}
+        structure = [{"Id": 11, "CategoryId": 1}, {"Id": 12, "CategoryId": 1},
+                     {"Id": 21, "CategoryId": 2}]
+        pct, covered, basis = grades.standing(grades.rows(mg, structure))
+        self.assertEqual(basis, "weights")
+        self.assertAlmostEqual(covered, 45.0)          # 20 + 25, not 200
+        self.assertAlmostEqual(pct, (15 + 16.25) / 45 * 100)
+
+    def test_a_missing_category_weight_gives_no_number_not_a_wrong_one(self):
+        import grades
+        mg = {"categories": [{"Id": 1, "Name": "Lab"}],
+              "values": [self._v("Lab1", 8, 10, 80, 100, gid=11)]}
+        rs = grades.rows(mg, [{"Id": 11, "CategoryId": 1}])
+        self.assertEqual(grades.standing(rs)[0], None)
+
+    def test_a_professors_subtotal_row_is_not_added_to_its_own_items(self):
+        # GNG2101 has "Project deliverables with evaluations 0 / 45", a formula
+        # row; summed in, it dragged a 93% project average down.
+        import grades
+        rs = grades.rows({"values": [self._v("Project A", 9, 10, gid=1),
+                                     self._v("Project B", 10, 10, gid=2),
+                                     self._v("Deliverables total", 0, 45, gid=3, type_=6)]})
+        pct, _, basis = grades.standing(rs)
+        self.assertAlmostEqual(pct, 95.0)
+        self.assertTrue(rs[2]["is_total"])
+
+    def test_marks_on_different_scales_give_no_points_total(self):
+        import grades
+        rs = grades.rows({"values": [self._v("Pre-lab", 80, 100, gid=1),
+                                     self._v("Lab", 1, 1, gid=2)]})
+        pct, _, basis = grades.standing(rs)
+        self.assertIsNone(pct)
+        self.assertEqual(basis, "mixed")
+        self.assertIn("syllabus", grades.summary_line(rs, {}))
+
     def test_odd_values_from_the_api_do_not_crash_it(self):
         import grades
         rs = grades.rows({"values": [
