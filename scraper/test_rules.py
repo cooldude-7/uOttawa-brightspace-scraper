@@ -1963,5 +1963,71 @@ class AHashInAFileNameIsPartOfTheName(unittest.TestCase):
         self.assertTrue(asked[1].endswith("/600753/content/topics/9001/file"), asked)
 
 
+class YourMarksAreReadNotInvented(unittest.TestCase):
+    """grades.py must report what Brightspace says, and nothing it does not.
+
+    The expensive mistake is silent: an ungraded item counted as zero makes a
+    passing student read as failing, and a category total listed beside its
+    own items counts every mark twice. Neither raises an error.
+    """
+
+    def _v(self, name, pn=None, pd=None, wn=None, wd=None, gid=1, type_=1):
+        return {"GradeObjectName": name, "GradeObjectIdentifier": str(gid),
+                "GradeObjectType": type_, "PointsNumerator": pn,
+                "PointsDenominator": pd, "WeightedNumerator": wn,
+                "WeightedDenominator": wd, "DisplayedGrade": "",
+                "Comments": {"Text": ""}}
+
+    def test_an_ungraded_item_is_left_out_not_counted_as_zero(self):
+        import grades
+        rs = grades.rows({"values": [
+            self._v("Midterm 1", 18, 20, 18, 20, gid=1),
+            self._v("Final exam", None, 100, None, 50, gid=2),
+        ]})
+        pct, covered, basis = grades.standing(rs)
+        self.assertAlmostEqual(pct, 90.0)
+        self.assertEqual(covered, 20.0, "only the graded weight is covered")
+        self.assertEqual(basis, "weights")
+
+    def test_category_and_final_totals_are_not_listed_as_items(self):
+        import grades
+        rs = grades.rows({"values": [
+            self._v("Lab 1", 8, 10, gid=1),
+            self._v("Labs", 8, 10, gid=2, type_=9),
+            self._v("Final Calculated Grade", 8, 10, gid=3, type_=7),
+        ]})
+        self.assertEqual([r["name"] for r in rs], ["Lab 1"])
+
+    def test_points_are_used_when_the_gradebook_has_no_weights(self):
+        import grades
+        rs = grades.rows({"values": [self._v("Quiz 1", 3, 4), self._v("Quiz 2", 1, 4, gid=2)]})
+        pct, covered, basis = grades.standing(rs)
+        self.assertAlmostEqual(pct, 50.0)
+        self.assertEqual(basis, "points")
+
+    def test_nothing_graded_says_so_rather_than_zero(self):
+        import grades
+        rs = grades.rows({"values": [self._v("Midterm", None, 20)]})
+        self.assertEqual(grades.standing(rs)[0], None)
+        self.assertIn("Nothing graded yet", grades.summary_line(rs, {}))
+
+    def test_an_unreleased_final_grade_is_not_shown(self):
+        import grades
+        self.assertIsNone(grades.final_shown({"final": {}}))
+        self.assertEqual(grades.final_shown(
+            {"final": {"PointsNumerator": 61, "PointsDenominator": 100}}), "61.0 %")
+
+    def test_odd_values_from_the_api_do_not_crash_it(self):
+        import grades
+        rs = grades.rows({"values": [
+            {"GradeObjectName": "Text feedback", "PointsNumerator": "",
+             "PointsDenominator": None, "Comments": None},
+            "not a dict", {"GradeObjectName": ""},
+        ]})
+        self.assertEqual(len(rs), 1)
+        self.assertFalse(rs[0]["graded"])
+        self.assertTrue(grades.table(rs))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

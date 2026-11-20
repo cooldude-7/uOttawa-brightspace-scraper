@@ -359,13 +359,19 @@ def get_client():
 
 # ------------------------------------------------------------------ fetching
 
-def get(client, path, **params):
-    """GET one endpoint. Returns parsed JSON, or None on any failure."""
+def get(client, path, _quiet=(), **params):
+    """GET one endpoint. Returns parsed JSON, or None on any failure.
+
+    `_quiet` is a set of status codes that are an expected answer rather than
+    a fault (a final grade not released yet answers 403 or 404), so they are
+    not printed. Anything else still is.
+    """
     try:
         r = client.get(BASE + path, params=params or None)
         if r.status_code == 200 and "json" in r.headers.get("content-type", ""):
             return r.json()
-        print(f"    ! {path} -> {r.status_code}")
+        if r.status_code not in _quiet:
+            print(f"    ! {path} -> {r.status_code}")
     except Exception as e:
         print(f"    ! {path} -> {e!r}")
     return None
@@ -557,11 +563,30 @@ def collect_course(client, course):
         "assignments": assignments,
         "quizzes": quizzes,
         "grades": get(client, f"/d2l/api/le/{LE}/{oid}/grades/") or [],
+        "my_grades": collect_my_grades(client, oid),
         "calendar": events if isinstance(events, list) else [],
         "discussions": collect_discussions(client, oid),
         "checklists": collect_checklists(client, oid),
         "surveys": as_list(get(client, f"/d2l/api/le/{LE}/{oid}/surveys/")),
         "overview": get(client, f"/d2l/api/le/{LE}/{oid}/overview") or {},
+    }
+
+
+def collect_my_grades(client, oid):
+    """The student's own marks, not just the list of graded items.
+
+    `/grades/` (kept above as "grades") is the gradebook's *structure*: item
+    names, weights, categories. It holds no score. The score is a separate
+    endpoint, and so is the course's running final grade -- which a professor
+    may simply not release, so a 403 or 404 there is an answer, not a fault.
+    grades.py turns this into rows; nothing here interprets it.
+    """
+    base = f"/d2l/api/le/{LE}/{oid}/grades"
+    return {
+        "values": as_list(get(client, f"{base}/values/myGradeValues/")),
+        "categories": as_list(get(client, f"{base}/categories/")),
+        "final": get(client, f"{base}/final/values/myGradeValue",
+                     _quiet={403, 404}) or {},
     }
 
 

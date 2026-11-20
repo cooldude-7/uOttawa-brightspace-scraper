@@ -221,6 +221,7 @@ python test_rules.py       the rules that must never break (no deps, ~0.1s)
 python backup.py           dump the database into the vault
 python backup.py --restore rebuild a database from that dump
 python exams.py            every exam, and which courses have none yet
+python grades.py           your marks per course, and where you stand (no requests)
 python exams.py --on 2026-10-23   just that day
 python store.py --section GNG2101 C1             which lab section you are in
 python store.py --year-typo MCG2130 2025 2026    a year the prof mistyped
@@ -898,6 +899,22 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   whether it worked. One push per *distinct* verdict, because the timer
   runs fourteen times a day and fourteen identical alerts is a notification
   you learn to swipe away.
+- **Grades are your own marks, and they live in the vault.** `/grades/` was
+  collected from the start, but it is the gradebook's *structure* -- names,
+  weights, categories -- with no score in it. The student's marks are
+  `/grades/values/myGradeValues/`, and the running total is
+  `/grades/final/values/myGradeValue`, which a professor may not release (a
+  403 or 404 there is an answer, so it is not printed). `collect.py` saves
+  them as `my_grades`; `grades.py` reshapes them; `vault.py` writes
+  `Courses/<course>/Grades.md` and `Dashboards/Grades.md`. Two rules in
+  `grades.py`, both guarded in `test_rules.py`: **an ungraded item is left
+  out, never counted as zero** (or a passing student reads as failing), and
+  **category and final totals are not listed beside their own items** (or
+  every mark counts twice). The standing is "of what is graded so far, by
+  Brightspace's weights" -- syllabus rules like a midterm replaced by a better
+  final are written in PDFs, not the gradebook, and are not applied. Grades
+  stay out of the Claude Project bundles. The vault is a private repo, but it
+  now holds marks: keep it private.
 - **Secrets stay out of git**: `api_key.txt`, `google_client.json`,
   `google_token.json`, `session.json`, `notify.txt`, `heartbeat.txt` -- the
   last two are URLs, and anyone holding one can message you or fake your
@@ -909,7 +926,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-Ninety-three tests, standard library only, a third of a second. They are not
+Ninety-nine tests, standard library only, a third of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another

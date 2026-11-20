@@ -47,6 +47,7 @@ MARK = "generated: true"
 
 # Written once, then yours. See skills.py for what they are.
 import skills as skills_mod
+import grades as grades_mod
 
 
 def slug(text, limit=60):
@@ -265,6 +266,7 @@ def build(dry=False):
     by_d2l = {c["id"]: c for c in collected}
 
     all_due = []
+    grade_lines = []
 
     for course in courses:
         cdir, parts = course_dir(root, course["name"])
@@ -319,6 +321,15 @@ def build(dry=False):
             for a in anns[:8]:
                 body += [f"- [[{slug(a.get('Title') or 'untitled')}]]"]
             body += [""]
+
+        if "my_grades" in raw:
+            body += ["## Grades", "",
+                     grades_mod.summary_line(
+                         grades_mod.rows(raw["my_grades"], raw.get("grades")),
+                         raw["my_grades"]),
+                     # Every course has a Grades note, so a bare [[Grades]]
+                     # would be ambiguous and Obsidian might open another course's.
+                     "", f"Every mark: [[{cdir.name}/Grades|Grades]]", ""]
 
         body += ["## My notes", "", "Anything you write goes in `Notes/`. "
                  "This file is rebuilt on every scrape, so do not write here.", ""]
@@ -376,6 +387,33 @@ def build(dry=False):
                 f"_Not prepared yet. Run:_ `python prep.py {r['id']}`", "",
                 "## My work", "", ""])
             write(cdir / "Work" / f"{slug(r['title'], 60)}.md", note, dry, report)
+
+        # ------------------------------------------------- grades
+        # Only once collect.py has asked for them: an absent key means "not
+        # collected yet", which must not read as "no grades".
+        if "my_grades" in raw:
+            g_rows = grades_mod.rows(raw["my_grades"], raw.get("grades"))
+            summary = grades_mod.summary_line(g_rows, raw["my_grades"])
+            note = "\n".join([
+                front({"course": parts["code"], "kind": "grades",
+                       "updated": datetime.now().strftime("%Y-%m-%d %H:%M")}),
+                "", f"# {parts['code']} grades", "", summary, "",
+                *grades_mod.table(g_rows), "",
+                "_The percentage covers only what has been graded so far, using "
+                "Brightspace's weights; ungraded items are left out, not counted "
+                "as zero. Syllabus rules (a midterm replaced by a better final, "
+                "minimum marks on exams) are not applied here._", ""])
+            write(cdir / "Grades.md", note, dry, report)
+            grade_lines.append(f"- **{parts['code']}** — {summary}  [[{cdir.name}/Grades|marks]]")
+
+    # ---------------------------------------------------------- grades dashboard
+    if grade_lines:
+        g = [front({"kind": "dashboard",
+                    "updated": datetime.now().strftime("%Y-%m-%d %H:%M")}),
+             "", "# Grades", "", *grade_lines, "",
+             "_What is graded so far, by Brightspace's own weights. Not a "
+             "prediction of the final grade._", ""]
+        write(root / "Dashboards" / "Grades.md", "\n".join(g), dry, report)
 
     # ---------------------------------------------------------- dashboard
     all_due.sort(key=lambda cr: (cr[1]["due_date"], cr[1]["due_time"] or ""))
