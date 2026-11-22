@@ -359,6 +359,15 @@ def get_client():
 
 # ------------------------------------------------------------------ fetching
 
+# Requests that failed because the connection itself failed -- no answer at
+# all, as opposed to an answer we did not like. main() refuses to save a
+# collection that has any, because a scrape cut off halfway looks like
+# courses with no announcements and no grades, and that would then be written
+# over the last good one. Seen for real on 2026-11-22: the ThinkPad's wifi
+# dropped mid-scrape, MCG2130 came back full and the other four empty.
+NET_FAILURES = []
+
+
 def get(client, path, _quiet=(), **params):
     """GET one endpoint. Returns parsed JSON, or None on any failure.
 
@@ -372,6 +381,9 @@ def get(client, path, _quiet=(), **params):
             return r.json()
         if r.status_code not in _quiet:
             print(f"    ! {path} -> {r.status_code}")
+    except httpx.TransportError as e:
+        NET_FAILURES.append(path)
+        print(f"    ! {path} -> {e!r}")
     except Exception as e:
         print(f"    ! {path} -> {e!r}")
     return None
@@ -695,7 +707,19 @@ def main(term_override=None, client=None):
         sys.exit("No courses matched. Pass a term code to override, e.g. 20269")
 
     print("Collecting:\n")
+    NET_FAILURES.clear()
     collected = [collect_course(client, c) for c in courses]
+
+    if NET_FAILURES:
+        # Keep the last complete collection rather than overwrite it with a
+        # half-empty one. SystemExit, so update.py records the run as failed
+        # and the doctor names the network; the next hourly run tries again.
+        sys.exit(
+            f"\nThe connection dropped during the scrape ({len(NET_FAILURES)} "
+            f"request{'s' if len(NET_FAILURES) != 1 else ''} got no answer, "
+            f"first: {NET_FAILURES[0]}).\n"
+            f"Nothing was saved: {OUT_FILE.name} still holds the last complete "
+            f"scrape. The next run will try again.")
 
     OUT_FILE.write_text(json.dumps(collected, indent=2), encoding="utf-8")
 

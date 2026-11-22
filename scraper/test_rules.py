@@ -13,6 +13,7 @@ No dependencies beyond the standard library, so it runs on the Pi.
 """
 
 import importlib.util
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -1961,6 +1962,56 @@ class AHashInAFileNameIsPartOfTheName(unittest.TestCase):
         path, note, asked = self._download([404, 200])
         self.assertIsNotNone(path, note)
         self.assertTrue(asked[1].endswith("/600753/content/topics/9001/file"), asked)
+
+
+class AHalfFinishedScrapeIsNotSaved(unittest.TestCase):
+    """2026-11-22: the wifi dropped mid-scrape and collect.py saved MCG2130
+    full and the other four courses empty, over the last good collection.
+    Pushed, that reads as four courses with no announcements and no grades."""
+
+    def _run(self, fail):
+        import collect, httpx, json
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "collected.json"
+            out.write_text(json.dumps([{"name": "last good"}]), encoding="utf-8")
+
+            class Client:
+                def get(self, url, params=None):
+                    if fail:
+                        raise httpx.ConnectError("getaddrinfo failed")
+                    class R:
+                        status_code = 200
+                        headers = {"content-type": "application/json"}
+                        def json(self): return []
+                    return R()
+
+            saved = (collect.OUT_FILE, collect.current_courses, collect.collect_course)
+            collect.OUT_FILE = out
+            collect.current_courses = lambda client, term=None: ([{"id": 1}], "20269")
+            collect.collect_course = lambda client, c: (
+                collect.get(client, "/x") or {"name": "new", "announcements": [],
+                                              "modules": [], "topics": [], "calendar": [],
+                                              "assignments": [], "quizzes": []})
+            try:
+                with contextlib.redirect_stdout(open(os.devnull, "w")):
+                    try:
+                        collect.main(client=Client())
+                        exited = False
+                    except SystemExit:
+                        exited = True
+            finally:
+                collect.OUT_FILE, collect.current_courses, collect.collect_course = saved
+            return exited, json.loads(out.read_text(encoding="utf-8"))
+
+    def test_a_dropped_connection_keeps_the_last_good_collection(self):
+        exited, data = self._run(fail=True)
+        self.assertTrue(exited, "the run must fail loudly, not succeed quietly")
+        self.assertEqual(data, [{"name": "last good"}])
+
+    def test_a_working_connection_still_saves(self):
+        exited, data = self._run(fail=False)
+        self.assertFalse(exited)
+        self.assertEqual(data[0]["name"], "new")
 
 
 class YourMarksAreReadNotInvented(unittest.TestCase):

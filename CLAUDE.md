@@ -915,6 +915,13 @@ On the Pi the same commands run, but under systemd rather than by hand — see
   final are written in PDFs, not the gradebook, and are not applied. Grades
   stay out of the Claude Project bundles. The vault is a private repo, but it
   now holds marks: keep it private.
+- **A scrape cut off halfway must not be saved.** 2026-11-22: the ThinkPad's
+  wifi dropped mid-run, and `collect.py` wrote MCG2130 full and the other
+  four courses empty over the last good `collected.json` -- which, pushed,
+  reads as four courses with no announcements and no grades. `get()` now
+  counts connection-level failures (`httpx.TransportError`, not HTTP errors)
+  in `NET_FAILURES`, and `main()` exits without saving if there are any. One
+  missed hour is the cost; the next run retries. `test_rules.py` guards it.
 - **Secrets stay out of git**: `api_key.txt`, `google_client.json`,
   `google_token.json`, `session.json`, `notify.txt`, `heartbeat.txt` -- the
   last two are URLs, and anyone holding one can message you or fake your
@@ -926,7 +933,7 @@ On the Pi the same commands run, but under systemd rather than by hand — see
 
     python test_rules.py
 
-A hundred and three tests, standard library only, a third of a second. They are not
+A hundred and five tests, standard library only, a third of a second. They are not
 coverage -- they are a guard on the handful of behaviours where being wrong
 is expensive **and silent**: the year-typo rule firing on a course it was
 not declared for, a linked to-do absorbing a real deadline, another
